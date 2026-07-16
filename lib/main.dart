@@ -1,3 +1,4 @@
+import 'screens/home/home_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -49,7 +50,9 @@ class SmartFuelApp extends StatelessWidget {
           ),
         ),
       ),
-      home: const LoginScreen(),
+      home: Supabase.instance.client.auth.currentSession == null
+          ? const LoginScreen()
+          : const HomeScreen(),
     );
   }
 }
