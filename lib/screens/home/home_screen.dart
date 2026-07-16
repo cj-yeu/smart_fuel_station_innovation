@@ -1,3 +1,4 @@
+import '../assessment/assessment_list_screen.dart';
 import '../vehicle/vehicle_list_screen.dart';
 import '../user/profile_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -107,6 +108,14 @@ class HomeScreen extends StatelessWidget {
               icon: Icons.analytics,
               title: 'AI Station Assessment',
               subtitle: 'Check whether a location is suitable for a fuel station',
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const AssessmentListScreen(),
+                  ),
+                );
+              },
             ),
             dashboardCard(
               icon: Icons.bar_chart,
