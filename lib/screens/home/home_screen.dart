@@ -1,3 +1,4 @@
+import '../vehicle/vehicle_list_screen.dart';
 import '../user/profile_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/material.dart';
@@ -93,6 +94,14 @@ class HomeScreen extends StatelessWidget {
               icon: Icons.directions_car,
               title: 'Vehicle Registration',
               subtitle: 'Register and manage vehicle information',
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const VehicleListScreen(),
+                  ),
+                );
+              },
             ),
             dashboardCard(
               icon: Icons.analytics,
@@ -114,10 +123,12 @@ class HomeScreen extends StatelessWidget {
     required IconData icon,
     required String title,
     required String subtitle,
+    VoidCallback? onTap,
   }) {
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
       child: ListTile(
+        onTap: onTap,
         leading: Icon(
           icon,
           size: 36,
