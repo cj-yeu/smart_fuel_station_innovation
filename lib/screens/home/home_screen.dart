@@ -1,3 +1,4 @@
+import '../user/profile_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/material.dart';
 import '../auth/login_screen.dart';
@@ -49,6 +50,19 @@ class HomeScreen extends StatelessWidget {
         foregroundColor: Colors.white,
         actions: [
           IconButton(
+            tooltip: 'My Profile',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const ProfileScreen(),
+                ),
+              );
+            },
+            icon: const Icon(Icons.account_circle),
+          ),
+          IconButton(
+            tooltip: 'Logout',
             onPressed: () => logout(context),
             icon: const Icon(Icons.logout),
           ),
