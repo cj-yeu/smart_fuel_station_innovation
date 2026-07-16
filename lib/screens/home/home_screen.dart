@@ -1,3 +1,4 @@
+import '../evaluation/evaluation_list_screen.dart';
 import '../assessment/assessment_list_screen.dart';
 import '../vehicle/vehicle_list_screen.dart';
 import '../user/profile_screen.dart';
@@ -121,6 +122,14 @@ class HomeScreen extends StatelessWidget {
               icon: Icons.bar_chart,
               title: 'AI Business Evaluation',
               subtitle: 'Estimate revenue, cost, profit and ROI',
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const EvaluationListScreen(),
+                  ),
+                );
+              },
             ),
           ],
         ),
