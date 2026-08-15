@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../home/home_screen.dart';
 import 'register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -23,18 +22,12 @@ class _LoginScreenState extends State<LoginScreen> {
     final password = passwordController.text;
 
     if (email.isEmpty || password.isEmpty) {
-      showMessage(
-        'Please enter email and password',
-        isError: true,
-      );
+      showMessage('Please enter email and password', isError: true);
       return;
     }
 
     if (!email.contains('@')) {
-      showMessage(
-        'Please enter a valid email address',
-        isError: true,
-      );
+      showMessage('Please enter a valid email address', isError: true);
       return;
     }
 
@@ -46,15 +39,6 @@ class _LoginScreenState extends State<LoginScreen> {
       await Supabase.instance.client.auth.signInWithPassword(
         email: email,
         password: password,
-      );
-
-      if (!mounted) return;
-
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (context) => const HomeScreen(),
-        ),
       );
     } on AuthException catch (error) {
       if (!mounted) return;
@@ -71,10 +55,7 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (error) {
       if (!mounted) return;
 
-      showMessage(
-        'Unable to login. Please try again.',
-        isError: true,
-      );
+      showMessage('Unable to login. Please try again.', isError: true);
     } finally {
       if (mounted) {
         setState(() {
@@ -121,18 +102,13 @@ class _LoginScreenState extends State<LoginScreen> {
                   const Text(
                     'Smart Fuel Station',
                     textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 8),
                   const Text(
                     'AI-powered fuel station planning system',
                     textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Colors.black54,
-                    ),
+                    style: TextStyle(color: Colors.black54),
                   ),
                   const SizedBox(height: 40),
                   TextField(
@@ -180,17 +156,14 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     child: isLoading
                         ? const SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                        : const Text(
-                      'Login',
-                      style: TextStyle(fontSize: 16),
-                    ),
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Text('Login', style: TextStyle(fontSize: 16)),
                   ),
                   const SizedBox(height: 16),
                   Row(
@@ -201,14 +174,14 @@ class _LoginScreenState extends State<LoginScreen> {
                         onPressed: isLoading
                             ? null
                             : () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) =>
-                              const RegisterScreen(),
-                            ),
-                          );
-                        },
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) =>
+                                        const RegisterScreen(),
+                                  ),
+                                );
+                              },
                         child: const Text('Register'),
                       ),
                     ],

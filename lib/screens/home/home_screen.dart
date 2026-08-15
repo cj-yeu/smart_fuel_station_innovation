@@ -4,35 +4,34 @@ import '../vehicle/vehicle_list_screen.dart';
 import '../user/profile_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/material.dart';
-import '../auth/login_screen.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
-  Future<void> logout(BuildContext context) async {
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  bool isLoggingOut = false;
+
+  Future<void> logout() async {
+    if (isLoggingOut) return;
+
+    setState(() {
+      isLoggingOut = true;
+    });
+
     try {
       await Supabase.instance.client.auth.signOut();
-
-      if (!context.mounted) return;
-
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(
-          builder: (context) => const LoginScreen(),
-        ),
-            (route) => false,
-      );
     } on AuthException catch (error) {
-      if (!context.mounted) return;
+      if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(error.message),
-          backgroundColor: Colors.red,
-        ),
+        SnackBar(content: Text(error.message), backgroundColor: Colors.red),
       );
     } catch (error) {
-      if (!context.mounted) return;
+      if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -40,6 +39,12 @@ class HomeScreen extends StatelessWidget {
           backgroundColor: Colors.red,
         ),
       );
+    } finally {
+      if (mounted) {
+        setState(() {
+          isLoggingOut = false;
+        });
+      }
     }
   }
 
@@ -57,16 +62,14 @@ class HomeScreen extends StatelessWidget {
             onPressed: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(
-                  builder: (context) => const ProfileScreen(),
-                ),
+                MaterialPageRoute(builder: (context) => const ProfileScreen()),
               );
             },
             icon: const Icon(Icons.account_circle),
           ),
           IconButton(
             tooltip: 'Logout',
-            onPressed: () => logout(context),
+            onPressed: isLoggingOut ? null : logout,
             icon: const Icon(Icons.logout),
           ),
         ],
@@ -78,17 +81,12 @@ class HomeScreen extends StatelessWidget {
           children: [
             const Text(
               'Welcome Back!',
-              style: TextStyle(
-                fontSize: 26,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
             const Text(
               'Manage fuel station planning with AI assessment and business evaluation.',
-              style: TextStyle(
-                color: Colors.black54,
-              ),
+              style: TextStyle(color: Colors.black54),
             ),
             const SizedBox(height: 24),
 
@@ -108,7 +106,8 @@ class HomeScreen extends StatelessWidget {
             dashboardCard(
               icon: Icons.analytics,
               title: 'AI Station Assessment',
-              subtitle: 'Check whether a location is suitable for a fuel station',
+              subtitle:
+                  'Check whether a location is suitable for a fuel station',
               onTap: () {
                 Navigator.push(
                   context,
@@ -147,17 +146,8 @@ class HomeScreen extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 16),
       child: ListTile(
         onTap: onTap,
-        leading: Icon(
-          icon,
-          size: 36,
-          color: Colors.green,
-        ),
-        title: Text(
-          title,
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-          ),
-        ),
+        leading: Icon(icon, size: 36, color: Colors.green),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
         subtitle: Text(subtitle),
         trailing: const Icon(Icons.arrow_forward_ios),
       ),
