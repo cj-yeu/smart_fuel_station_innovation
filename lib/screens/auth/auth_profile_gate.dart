@@ -263,7 +263,11 @@ class _AuthProfileGateState extends State<AuthProfileGate> {
           onSignOut: signOut,
         );
       case _GateState.ready:
-        return const HomeScreen();
+        final profile = currentProfile;
+        if (profile == null || !profile.hasCompany || profile.company == null) {
+          return buildProfileErrorState();
+        }
+        return HomeScreen(profile: profile);
       case _GateState.profileError:
         return buildProfileErrorState();
     }
