@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../../services/profile_service.dart';
 
 class EditProfileScreen extends StatefulWidget {
   final String fullName;
   final String phone;
+  final ProfileService? profileService;
 
   const EditProfileScreen({
     super.key,
     required this.fullName,
     required this.phone,
+    this.profileService,
   });
 
   @override
@@ -16,6 +19,7 @@ class EditProfileScreen extends StatefulWidget {
 }
 
 class _EditProfileScreenState extends State<EditProfileScreen> {
+  late final ProfileService profileService;
   late final TextEditingController fullNameController;
   late final TextEditingController phoneController;
 
@@ -24,25 +28,18 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   @override
   void initState() {
     super.initState();
+    profileService = widget.profileService ?? ProfileService();
 
-    fullNameController = TextEditingController(
-      text: widget.fullName,
-    );
+    fullNameController = TextEditingController(text: widget.fullName);
 
-    phoneController = TextEditingController(
-      text: widget.phone,
-    );
+    phoneController = TextEditingController(text: widget.phone);
   }
 
   Future<void> saveProfile() async {
-    final user = Supabase.instance.client.auth.currentUser;
+    if (isSaving) return;
+
     final fullName = fullNameController.text.trim();
     final phone = phoneController.text.trim();
-
-    if (user == null) {
-      showMessage('No logged-in user found', isError: true);
-      return;
-    }
 
     if (fullName.isEmpty) {
       showMessage('Full name cannot be empty', isError: true);
@@ -54,21 +51,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     });
 
     try {
-      await Supabase.instance.client
-          .from('profiles')
-          .update({
-        'full_name': fullName,
-        'phone': phone.isEmpty ? null : phone,
-        'updated_at': DateTime.now().toIso8601String(),
-      })
-          .eq('user_id', user.id);
-
-      await Supabase.instance.client.auth.updateUser(
-        UserAttributes(
-          data: {
-            'full_name': fullName,
-          },
-        ),
+      await profileService.updateCurrentProfile(
+        fullName: fullName,
+        phone: phone.isEmpty ? null : phone,
       );
 
       if (!mounted) return;
@@ -81,15 +66,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       );
 
       Navigator.pop(context, true);
-    } on AuthException catch (error) {
+    } catch (_) {
       if (!mounted) return;
-      showMessage(error.message, isError: true);
-    } catch (error) {
-      if (!mounted) return;
-      showMessage(
-        'Unable to update profile. Please try again.',
-        isError: true,
-      );
+      showMessage('Unable to update profile. Please try again.', isError: true);
     } finally {
       if (mounted) {
         setState(() {
@@ -131,11 +110,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             const CircleAvatar(
               radius: 44,
               backgroundColor: Color(0xFF168C4B),
-              child: Icon(
-                Icons.edit,
-                size: 46,
-                color: Colors.white,
-              ),
+              child: Icon(Icons.edit, size: 46, color: Colors.white),
             ),
             const SizedBox(height: 30),
             TextField(
@@ -167,17 +142,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               ),
               child: isSaving
                   ? const SizedBox(
-                width: 22,
-                height: 22,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: Colors.white,
-                ),
-              )
-                  : const Text(
-                'Save Changes',
-                style: TextStyle(fontSize: 16),
-              ),
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Text('Save Changes', style: TextStyle(fontSize: 16)),
             ),
           ],
         ),

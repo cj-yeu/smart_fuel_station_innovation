@@ -1,8 +1,7 @@
-import 'screens/home/home_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'screens/auth/login_screen.dart';
+import 'screens/auth/auth_profile_gate.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -43,16 +42,11 @@ class SmartFuelApp extends StatelessWidget {
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(14),
-            borderSide: const BorderSide(
-              color: Color(0xFF168C4B),
-              width: 2,
-            ),
+            borderSide: const BorderSide(color: Color(0xFF168C4B), width: 2),
           ),
         ),
       ),
-      home: Supabase.instance.client.auth.currentSession == null
-          ? const LoginScreen()
-          : const HomeScreen(),
+      home: const AuthProfileGate(),
     );
   }
 }
