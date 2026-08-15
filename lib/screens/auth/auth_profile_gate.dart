@@ -209,6 +209,19 @@ class _AuthProfileGateState extends State<AuthProfileGate> {
     return client.auth.signOut();
   }
 
+  String? requestedCompanyCode() {
+    final value = client
+        .auth
+        .currentSession
+        ?.user
+        .userMetadata?['requested_company_code'];
+
+    if (value is! String) return null;
+
+    final normalizedValue = value.trim();
+    return normalizedValue.isEmpty ? null : normalizedValue;
+  }
+
   Future<void> signOutFromError() async {
     if (isErrorSignOutInProgress) return;
 
@@ -259,6 +272,7 @@ class _AuthProfileGateState extends State<AuthProfileGate> {
       case _GateState.needsCompany:
         return CompanyOnboardingScreen(
           profileService: profileService,
+          initialCompanyCode: requestedCompanyCode(),
           onCompleted: handleOnboardingCompleted,
           onSignOut: signOut,
         );

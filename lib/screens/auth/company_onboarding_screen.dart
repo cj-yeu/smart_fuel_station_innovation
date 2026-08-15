@@ -6,12 +6,14 @@ import '../../services/profile_service.dart';
 
 class CompanyOnboardingScreen extends StatefulWidget {
   final ProfileService? profileService;
+  final String? initialCompanyCode;
   final VoidCallback onCompleted;
   final Future<void> Function() onSignOut;
 
   const CompanyOnboardingScreen({
     super.key,
     this.profileService,
+    this.initialCompanyCode,
     required this.onCompleted,
     required this.onSignOut,
   });
@@ -26,25 +28,34 @@ class _CompanyOnboardingScreenState extends State<CompanyOnboardingScreen> {
   final invitationController = TextEditingController();
 
   late final ProfileService profileService;
+  late final String? initialCompanyCode;
 
   List<FuelCompany> companies = const [];
   FuelCompany? selectedCompany;
   String? companyLoadError;
   String? claimError;
   bool isLoadingCompanies = true;
+  bool isCompanyLoadInProgress = false;
   bool isClaiming = false;
   bool isSigningOut = false;
   bool obscureInvitationCode = true;
+  int companyLoadVersion = 0;
 
   @override
   void initState() {
     super.initState();
     profileService = widget.profileService ?? ProfileService();
+    initialCompanyCode = normalizeCompanyCode(widget.initialCompanyCode);
     loadCompanies();
   }
 
   Future<void> loadCompanies() async {
+    if (isCompanyLoadInProgress) return;
+
+    final selectedCompanyCode = selectedCompany?.companyCode;
+
     setState(() {
+      isCompanyLoadInProgress = true;
       isLoadingCompanies = true;
       companyLoadError = null;
     });
@@ -54,9 +65,26 @@ class _CompanyOnboardingScreenState extends State<CompanyOnboardingScreen> {
 
       if (!mounted) return;
 
+      final activeCompanies = loadedCompanies
+          .where((company) => company.isActive)
+          .toList(growable: false);
+      final currentSelection = findCompanyByCode(
+        activeCompanies,
+        selectedCompanyCode,
+      );
+
+      // Auth metadata improves onboarding UX only. It does not establish
+      // membership; the invitation-code claim RPC remains authoritative.
+      final reconciledSelection =
+          currentSelection ??
+          findCompanyByCode(activeCompanies, initialCompanyCode);
+
       setState(() {
-        companies = loadedCompanies;
+        companies = activeCompanies;
+        selectedCompany = reconciledSelection;
         isLoadingCompanies = false;
+        isCompanyLoadInProgress = false;
+        companyLoadVersion++;
       });
     } catch (_) {
       if (!mounted) return;
@@ -64,10 +92,34 @@ class _CompanyOnboardingScreenState extends State<CompanyOnboardingScreen> {
       setState(() {
         companies = const [];
         isLoadingCompanies = false;
+        isCompanyLoadInProgress = false;
         companyLoadError =
             'Unable to load fuel companies. Check your connection and try again.';
       });
     }
+  }
+
+  String? normalizeCompanyCode(String? companyCode) {
+    final normalizedCode = companyCode?.trim().toLowerCase();
+    return normalizedCode == null || normalizedCode.isEmpty
+        ? null
+        : normalizedCode;
+  }
+
+  FuelCompany? findCompanyByCode(
+    List<FuelCompany> activeCompanies,
+    String? companyCode,
+  ) {
+    final normalizedCode = normalizeCompanyCode(companyCode);
+    if (normalizedCode == null) return null;
+
+    for (final company in activeCompanies) {
+      if (normalizeCompanyCode(company.companyCode) == normalizedCode) {
+        return company;
+      }
+    }
+
+    return null;
   }
 
   Future<void> claimMembership() async {
@@ -276,6 +328,7 @@ class _CompanyOnboardingScreenState extends State<CompanyOnboardingScreen> {
           ),
           const SizedBox(height: 32),
           DropdownButtonFormField<FuelCompany>(
+            key: ValueKey(companyLoadVersion),
             initialValue: selectedCompany,
             isExpanded: true,
             decoration: const InputDecoration(
