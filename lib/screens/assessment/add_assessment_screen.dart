@@ -1,19 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../models/station_assessment.dart';
+import '../../models/station_assessment_create_input.dart';
+import '../../services/station_assessment_repository.dart';
 import '../../services/station_assessment_service.dart';
 import 'assessment_result_screen.dart';
 
+typedef AssessmentCreator =
+    Future<StationAssessment> Function(StationAssessmentCreateInput input);
+
 class AddAssessmentScreen extends StatefulWidget {
-  const AddAssessmentScreen({super.key});
+  final AssessmentCreator? assessmentCreator;
+
+  const AddAssessmentScreen({super.key, this.assessmentCreator});
 
   @override
-  State<AddAssessmentScreen> createState() =>
-      _AddAssessmentScreenState();
+  State<AddAssessmentScreen> createState() => _AddAssessmentScreenState();
 }
 
-class _AddAssessmentScreenState
-    extends State<AddAssessmentScreen> {
+class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
+  late final AssessmentCreator assessmentCreator;
+
   final locationController = TextEditingController();
   final populationController = TextEditingController();
   final vehicleCountController = TextEditingController();
@@ -28,12 +36,19 @@ class _AddAssessmentScreenState
 
   bool isSaving = false;
 
+  @override
+  void initState() {
+    super.initState();
+    assessmentCreator =
+        widget.assessmentCreator ??
+        StationAssessmentRepository(Supabase.instance.client).createAssessment;
+  }
+
   Future<void> runAssessment() async {
-    final user = Supabase.instance.client.auth.currentUser;
+    if (isSaving) return;
+
     final locationName = locationController.text.trim();
-    final populationDensity = double.tryParse(
-      populationController.text.trim(),
-    );
+    final populationDensity = double.tryParse(populationController.text.trim());
     final registeredVehicleCount = int.tryParse(
       vehicleCountController.text.trim(),
     );
@@ -43,11 +58,6 @@ class _AddAssessmentScreenState
     final competitorDistanceKm = double.tryParse(
       competitorDistanceController.text.trim(),
     );
-
-    if (user == null) {
-      showMessage('No logged-in user found', isError: true);
-      return;
-    }
 
     if (locationName.isEmpty ||
         populationDensity == null ||
@@ -62,10 +72,7 @@ class _AddAssessmentScreenState
         registeredVehicleCount < 0 ||
         nearbyFuelStations < 0 ||
         competitorDistanceKm < 0) {
-      showMessage(
-        'Numeric values cannot be negative',
-        isError: true,
-      );
+      showMessage('Numeric values cannot be negative', isError: true);
       return;
     }
 
@@ -86,25 +93,24 @@ class _AddAssessmentScreenState
         landAccessibility: landAccessibility,
       );
 
-      await Supabase.instance.client
-          .from('station_assessments')
-          .insert({
-        'user_id': user.id,
-        'location_name': locationName,
-        'population_density': populationDensity,
-        'traffic_level': trafficLevel,
-        'registered_vehicle_count': registeredVehicleCount,
-        'nearby_fuel_stations': nearbyFuelStations,
-        'competitor_distance_km': competitorDistanceKm,
-        'road_accessibility': roadAccessibility,
-        'commercial_activity': commercialActivity,
-        'residential_activity': residentialActivity,
-        'land_accessibility': landAccessibility,
-        'final_score': result.finalScore,
-        'suitability_category': result.category,
-        'recommendation': result.recommendation,
-        'explanation': result.explanation,
-      });
+      final input = StationAssessmentCreateInput(
+        locationName: locationName,
+        populationDensity: populationDensity,
+        trafficLevel: trafficLevel,
+        registeredVehicleCount: registeredVehicleCount,
+        nearbyFuelStations: nearbyFuelStations,
+        competitorDistanceKm: competitorDistanceKm,
+        roadAccessibility: roadAccessibility,
+        commercialActivity: commercialActivity,
+        residentialActivity: residentialActivity,
+        landAccessibility: landAccessibility,
+        finalScore: result.finalScore,
+        suitabilityCategory: result.category,
+        recommendation: result.recommendation,
+        explanation: result.explanation,
+      );
+
+      await assessmentCreator(input);
 
       if (!mounted) return;
 
@@ -123,9 +129,6 @@ class _AddAssessmentScreenState
       if (completed == true) {
         Navigator.pop(context, true);
       }
-    } on PostgrestException catch (error) {
-      if (!mounted) return;
-      showMessage(error.message, isError: true);
     } catch (error) {
       if (!mounted) return;
       showMessage(
@@ -174,10 +177,7 @@ class _AddAssessmentScreenState
         children: [
           const Text(
             'Location and Demand',
-            style: TextStyle(
-              fontSize: 19,
-              fontWeight: FontWeight.bold,
-            ),
+            style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 16),
           inputField(
@@ -203,10 +203,7 @@ class _AddAssessmentScreenState
           const SizedBox(height: 8),
           const Text(
             'Competition',
-            style: TextStyle(
-              fontSize: 19,
-              fontWeight: FontWeight.bold,
-            ),
+            style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 16),
           inputField(
@@ -226,10 +223,7 @@ class _AddAssessmentScreenState
           const SizedBox(height: 8),
           const Text(
             'Area Ratings',
-            style: TextStyle(
-              fontSize: 19,
-              fontWeight: FontWeight.bold,
-            ),
+            style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 6),
           const Text(
@@ -289,6 +283,7 @@ class _AddAssessmentScreenState
           ),
           const SizedBox(height: 12),
           ElevatedButton.icon(
+            key: const ValueKey('run-assessment-button'),
             onPressed: isSaving ? null : runAssessment,
             style: ElevatedButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 16),
@@ -298,13 +293,13 @@ class _AddAssessmentScreenState
             ),
             icon: isSaving
                 ? const SizedBox(
-              width: 22,
-              height: 22,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: Colors.white,
-              ),
-            )
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
                 : const Icon(Icons.psychology),
             label: Text(
               isSaving ? 'Assessing...' : 'Run AI Assessment',
@@ -352,10 +347,7 @@ class _AddAssessmentScreenState
       padding: const EdgeInsets.only(bottom: 16),
       child: DropdownButtonFormField<int>(
         initialValue: value,
-        decoration: InputDecoration(
-          labelText: label,
-          prefixIcon: Icon(icon),
-        ),
+        decoration: InputDecoration(labelText: label, prefixIcon: Icon(icon)),
         items: List.generate(5, (index) {
           final rating = index + 1;
 
@@ -367,10 +359,10 @@ class _AddAssessmentScreenState
         onChanged: isSaving
             ? null
             : (newValue) {
-          if (newValue != null) {
-            onChanged(newValue);
-          }
-        },
+                if (newValue != null) {
+                  onChanged(newValue);
+                }
+              },
       ),
     );
   }

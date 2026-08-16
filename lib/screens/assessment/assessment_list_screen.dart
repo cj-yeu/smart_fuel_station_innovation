@@ -1,65 +1,114 @@
-import 'edit_assessment_screen.dart';
-import 'add_assessment_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../models/station_assessment.dart';
+import '../../services/profile_service.dart';
+import '../../services/station_assessment_repository.dart';
+import 'add_assessment_screen.dart';
+import 'edit_assessment_screen.dart';
 
-class AssessmentListScreen extends StatefulWidget {
-  const AssessmentListScreen({super.key});
+typedef AssessmentLoader = Future<List<StationAssessment>> Function();
+typedef AssessmentDeleter = Future<void> Function(String assessmentId);
+typedef AssessmentAccessLoader = Future<AssessmentAccessContext> Function();
 
-  @override
-  State<AssessmentListScreen> createState() =>
-      _AssessmentListScreenState();
+class AssessmentAccessContext {
+  final String userId;
+  final bool isCompanyAdmin;
+  final bool hasCompany;
+
+  const AssessmentAccessContext({
+    required this.userId,
+    required this.isCompanyAdmin,
+    required this.hasCompany,
+  });
 }
 
-class _AssessmentListScreenState
-    extends State<AssessmentListScreen> {
+class AssessmentListScreen extends StatefulWidget {
+  final AssessmentLoader? assessmentLoader;
+  final AssessmentDeleter? assessmentDeleter;
+  final AssessmentAccessLoader? accessLoader;
+
+  const AssessmentListScreen({
+    super.key,
+    this.assessmentLoader,
+    this.assessmentDeleter,
+    this.accessLoader,
+  });
+
+  @override
+  State<AssessmentListScreen> createState() => _AssessmentListScreenState();
+}
+
+class _AssessmentListScreenState extends State<AssessmentListScreen> {
+  late final AssessmentLoader assessmentLoader;
+  late final AssessmentDeleter assessmentDeleter;
+  late final AssessmentAccessLoader accessLoader;
+
   List<StationAssessment> assessments = [];
+  AssessmentAccessContext? accessContext;
   bool isLoading = true;
   String? errorMessage;
+  int loadGeneration = 0;
 
   @override
   void initState() {
     super.initState();
+
+    final injectedLoader = widget.assessmentLoader;
+    final injectedDeleter = widget.assessmentDeleter;
+    final injectedAccessLoader = widget.accessLoader;
+
+    if (injectedLoader != null &&
+        injectedDeleter != null &&
+        injectedAccessLoader != null) {
+      assessmentLoader = injectedLoader;
+      assessmentDeleter = injectedDeleter;
+      accessLoader = injectedAccessLoader;
+    } else {
+      final client = Supabase.instance.client;
+      final repository = StationAssessmentRepository(client);
+      final profileService = ProfileService(client: client);
+      assessmentLoader = injectedLoader ?? repository.fetchCompanyAssessments;
+      assessmentDeleter = injectedDeleter ?? repository.deleteAssessment;
+      accessLoader =
+          injectedAccessLoader ??
+          () async {
+            final profile = await profileService.fetchCurrentProfile();
+            return AssessmentAccessContext(
+              userId: profile.userId,
+              isCompanyAdmin: profile.isCompanyAdmin,
+              hasCompany: profile.companyId?.trim().isNotEmpty == true,
+            );
+          };
+    }
+
     loadAssessments();
   }
 
   Future<void> loadAssessments() async {
-    final user = Supabase.instance.client.auth.currentUser;
-
-    if (user == null) {
-      setState(() {
-        isLoading = false;
-        errorMessage = 'No logged-in user found';
-      });
-      return;
-    }
+    final requestGeneration = ++loadGeneration;
 
     try {
-      final data = await Supabase.instance.client
-          .from('station_assessments')
-          .select()
-          .eq('user_id', user.id)
-          .order('created_at', ascending: false);
+      final loadedAccess = await accessLoader();
+      if (loadedAccess.userId.trim().isEmpty || !loadedAccess.hasCompany) {
+        throw StateError('Authoritative company access is unavailable.');
+      }
 
-      final loadedAssessments = data
-          .map<StationAssessment>(
-            (item) => StationAssessment.fromMap(item),
-      )
-          .toList();
+      final loadedAssessments = await assessmentLoader();
 
-      if (!mounted) return;
+      if (!mounted || requestGeneration != loadGeneration) return;
 
       setState(() {
         assessments = loadedAssessments;
+        accessContext = loadedAccess;
         isLoading = false;
         errorMessage = null;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || requestGeneration != loadGeneration) return;
 
       setState(() {
+        accessContext = null;
         isLoading = false;
         errorMessage = 'Unable to load assessments';
       });
@@ -77,9 +126,7 @@ class _AssessmentListScreenState
     }
   }
 
-  Future<void> deleteAssessment(
-      StationAssessment assessment,
-      ) async {
+  Future<void> deleteAssessment(StationAssessment assessment) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
@@ -87,7 +134,7 @@ class _AssessmentListScreenState
           title: const Text('Delete Assessment'),
           content: Text(
             'Delete the assessment for '
-                '${assessment.locationName}?',
+            '${assessment.locationName}?',
           ),
           actions: [
             TextButton(
@@ -113,16 +160,8 @@ class _AssessmentListScreenState
 
     if (confirmed != true) return;
 
-    final user = Supabase.instance.client.auth.currentUser;
-
-    if (user == null) return;
-
     try {
-      await Supabase.instance.client
-          .from('station_assessments')
-          .delete()
-          .eq('id', assessment.id)
-          .eq('user_id', user.id);
+      await assessmentDeleter(assessment.id);
 
       if (!mounted) return;
 
@@ -138,12 +177,15 @@ class _AssessmentListScreenState
       });
 
       await loadAssessments();
-    } on PostgrestException catch (error) {
+    } on AssessmentDeleteRejectedException {
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(error.message),
+        const SnackBar(
+          content: Text(
+            'Assessment could not be deleted. It may be unavailable or you '
+            'may not have permission.',
+          ),
           backgroundColor: Colors.red,
         ),
       );
@@ -152,7 +194,7 @@ class _AssessmentListScreenState
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Unable to delete assessment'),
+          content: Text('Unable to delete assessment. Please try again.'),
           backgroundColor: Colors.red,
         ),
       );
@@ -196,9 +238,7 @@ class _AssessmentListScreenState
 
   Widget buildBody() {
     if (isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(),
-      );
+      return const Center(child: CircularProgressIndicator());
     }
 
     if (errorMessage != null) {
@@ -208,11 +248,7 @@ class _AssessmentListScreenState
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(
-                Icons.error_outline,
-                size: 60,
-                color: Colors.red,
-              ),
+              const Icon(Icons.error_outline, size: 60, color: Colors.red),
               const SizedBox(height: 16),
               Text(errorMessage!),
               const SizedBox(height: 16),
@@ -240,19 +276,12 @@ class _AssessmentListScreenState
           physics: const AlwaysScrollableScrollPhysics(),
           children: const [
             SizedBox(height: 140),
-            Icon(
-              Icons.analytics_outlined,
-              size: 90,
-              color: Colors.black26,
-            ),
+            Icon(Icons.analytics_outlined, size: 90, color: Colors.black26),
             SizedBox(height: 20),
             Text(
               'No assessments yet',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
             SizedBox(height: 8),
             Text(
@@ -272,38 +301,39 @@ class _AssessmentListScreenState
         itemCount: assessments.length,
         itemBuilder: (context, index) {
           final assessment = assessments[index];
-          final color = categoryColor(
-            assessment.suitabilityCategory,
-          );
+          final color = categoryColor(assessment.suitabilityCategory);
+          final currentAccess = accessContext!;
+          final isOwnAssessment = assessment.userId == currentAccess.userId;
+          final canManage = isOwnAssessment || currentAccess.isCompanyAdmin;
 
           return Card(
+            key: ValueKey('assessment-card-${assessment.id}'),
             margin: const EdgeInsets.only(bottom: 14),
             child: ListTile(
-              onTap: () async {
-                final updated = await Navigator.push<bool>(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => EditAssessmentScreen(
-                      assessment: assessment,
-                    ),
-                  ),
-                );
+              key: ValueKey('assessment-row-${assessment.id}'),
+              onTap: canManage
+                  ? () async {
+                      final updated = await Navigator.push<bool>(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) =>
+                              EditAssessmentScreen(assessment: assessment),
+                        ),
+                      );
 
-                if (updated == true) {
-                  setState(() {
-                    isLoading = true;
-                  });
+                      if (updated == true) {
+                        setState(() {
+                          isLoading = true;
+                        });
 
-                  await loadAssessments();
-                }
-              },
+                        await loadAssessments();
+                      }
+                    }
+                  : null,
               contentPadding: const EdgeInsets.all(16),
               leading: CircleAvatar(
                 backgroundColor: color.withValues(alpha: 0.15),
-                child: Icon(
-                  Icons.location_on,
-                  color: color,
-                ),
+                child: Icon(Icons.location_on, color: color),
               ),
               title: Text(
                 assessment.locationName,
@@ -316,18 +346,27 @@ class _AssessmentListScreenState
                 padding: const EdgeInsets.only(top: 8),
                 child: Text(
                   'Score: ${assessment.finalScore.toStringAsFixed(1)}/100\n'
-                      '${assessment.suitabilityCategory}',
+                  '${assessment.suitabilityCategory}\n'
+                  '${isOwnAssessment
+                      ? 'Your assessment'
+                      : currentAccess.isCompanyAdmin
+                      ? 'Company assessment • Admin access'
+                      : 'Company assessment • Read-only'}',
                 ),
               ),
               isThreeLine: true,
-              trailing: IconButton(
-                tooltip: 'Delete Assessment',
-                onPressed: () => deleteAssessment(assessment),
-                icon: const Icon(
-                  Icons.delete_outline,
-                  color: Colors.red,
-                ),
-              ),
+              trailing: canManage
+                  ? IconButton(
+                      key: ValueKey('delete-assessment-${assessment.id}'),
+                      tooltip: 'Delete Assessment',
+                      onPressed: () => deleteAssessment(assessment),
+                      icon: const Icon(Icons.delete_outline, color: Colors.red),
+                    )
+                  : Icon(
+                      Icons.lock_outline,
+                      key: ValueKey('read-only-assessment-${assessment.id}'),
+                      color: Colors.black45,
+                    ),
             ),
           );
         },

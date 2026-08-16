@@ -1,6 +1,7 @@
 class StationAssessment {
   final String id;
   final String userId;
+  final String? companyId;
   final String locationName;
   final double populationDensity;
   final int trafficLevel;
@@ -21,6 +22,7 @@ class StationAssessment {
   const StationAssessment({
     required this.id,
     required this.userId,
+    required this.companyId,
     required this.locationName,
     required this.populationDensity,
     required this.trafficLevel,
@@ -43,15 +45,13 @@ class StationAssessment {
     return StationAssessment(
       id: map['id'] as String,
       userId: map['user_id'] as String,
+      companyId: map['company_id'] as String?,
       locationName: map['location_name'] as String,
-      populationDensity:
-      (map['population_density'] as num).toDouble(),
+      populationDensity: (map['population_density'] as num).toDouble(),
       trafficLevel: map['traffic_level'] as int,
-      registeredVehicleCount:
-      map['registered_vehicle_count'] as int,
+      registeredVehicleCount: map['registered_vehicle_count'] as int,
       nearbyFuelStations: map['nearby_fuel_stations'] as int,
-      competitorDistanceKm:
-      (map['competitor_distance_km'] as num).toDouble(),
+      competitorDistanceKm: (map['competitor_distance_km'] as num).toDouble(),
       roadAccessibility: map['road_accessibility'] as int,
       commercialActivity: map['commercial_activity'] as int,
       residentialActivity: map['residential_activity'] as int,
