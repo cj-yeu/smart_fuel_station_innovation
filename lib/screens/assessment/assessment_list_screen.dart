@@ -1,35 +1,65 @@
-import 'edit_assessment_screen.dart';
-import 'add_assessment_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../models/station_assessment.dart';
+import '../../services/station_assessment_repository.dart';
+import 'add_assessment_screen.dart';
+import 'edit_assessment_screen.dart';
+
+typedef AssessmentLoader = Future<List<StationAssessment>> Function();
+typedef CurrentUserIdProvider = String? Function();
 
 class AssessmentListScreen extends StatefulWidget {
-  const AssessmentListScreen({super.key});
+  final AssessmentLoader? assessmentLoader;
+  final CurrentUserIdProvider? currentUserIdProvider;
+
+  const AssessmentListScreen({
+    super.key,
+    this.assessmentLoader,
+    this.currentUserIdProvider,
+  });
 
   @override
-  State<AssessmentListScreen> createState() =>
-      _AssessmentListScreenState();
+  State<AssessmentListScreen> createState() => _AssessmentListScreenState();
 }
 
-class _AssessmentListScreenState
-    extends State<AssessmentListScreen> {
+class _AssessmentListScreenState extends State<AssessmentListScreen> {
+  late final AssessmentLoader assessmentLoader;
+  late final CurrentUserIdProvider currentUserIdProvider;
+
   List<StationAssessment> assessments = [];
+  String? currentUserId;
   bool isLoading = true;
   String? errorMessage;
 
   @override
   void initState() {
     super.initState();
+
+    final injectedLoader = widget.assessmentLoader;
+    final injectedUserIdProvider = widget.currentUserIdProvider;
+
+    if (injectedLoader != null && injectedUserIdProvider != null) {
+      assessmentLoader = injectedLoader;
+      currentUserIdProvider = injectedUserIdProvider;
+    } else {
+      final client = Supabase.instance.client;
+      assessmentLoader =
+          injectedLoader ??
+          StationAssessmentRepository(client).fetchCompanyAssessments;
+      currentUserIdProvider =
+          injectedUserIdProvider ?? () => client.auth.currentUser?.id;
+    }
+
     loadAssessments();
   }
 
   Future<void> loadAssessments() async {
-    final user = Supabase.instance.client.auth.currentUser;
+    final userId = currentUserIdProvider();
 
-    if (user == null) {
+    if (userId == null) {
       setState(() {
+        currentUserId = null;
         isLoading = false;
         errorMessage = 'No logged-in user found';
       });
@@ -37,22 +67,13 @@ class _AssessmentListScreenState
     }
 
     try {
-      final data = await Supabase.instance.client
-          .from('station_assessments')
-          .select()
-          .eq('user_id', user.id)
-          .order('created_at', ascending: false);
-
-      final loadedAssessments = data
-          .map<StationAssessment>(
-            (item) => StationAssessment.fromMap(item),
-      )
-          .toList();
+      final loadedAssessments = await assessmentLoader();
 
       if (!mounted) return;
 
       setState(() {
         assessments = loadedAssessments;
+        currentUserId = userId;
         isLoading = false;
         errorMessage = null;
       });
@@ -77,9 +98,7 @@ class _AssessmentListScreenState
     }
   }
 
-  Future<void> deleteAssessment(
-      StationAssessment assessment,
-      ) async {
+  Future<void> deleteAssessment(StationAssessment assessment) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
@@ -87,7 +106,7 @@ class _AssessmentListScreenState
           title: const Text('Delete Assessment'),
           content: Text(
             'Delete the assessment for '
-                '${assessment.locationName}?',
+            '${assessment.locationName}?',
           ),
           actions: [
             TextButton(
@@ -142,10 +161,7 @@ class _AssessmentListScreenState
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(error.message),
-          backgroundColor: Colors.red,
-        ),
+        SnackBar(content: Text(error.message), backgroundColor: Colors.red),
       );
     } catch (error) {
       if (!mounted) return;
@@ -196,9 +212,7 @@ class _AssessmentListScreenState
 
   Widget buildBody() {
     if (isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(),
-      );
+      return const Center(child: CircularProgressIndicator());
     }
 
     if (errorMessage != null) {
@@ -208,11 +222,7 @@ class _AssessmentListScreenState
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(
-                Icons.error_outline,
-                size: 60,
-                color: Colors.red,
-              ),
+              const Icon(Icons.error_outline, size: 60, color: Colors.red),
               const SizedBox(height: 16),
               Text(errorMessage!),
               const SizedBox(height: 16),
@@ -240,19 +250,12 @@ class _AssessmentListScreenState
           physics: const AlwaysScrollableScrollPhysics(),
           children: const [
             SizedBox(height: 140),
-            Icon(
-              Icons.analytics_outlined,
-              size: 90,
-              color: Colors.black26,
-            ),
+            Icon(Icons.analytics_outlined, size: 90, color: Colors.black26),
             SizedBox(height: 20),
             Text(
               'No assessments yet',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
             SizedBox(height: 8),
             Text(
@@ -272,38 +275,37 @@ class _AssessmentListScreenState
         itemCount: assessments.length,
         itemBuilder: (context, index) {
           final assessment = assessments[index];
-          final color = categoryColor(
-            assessment.suitabilityCategory,
-          );
+          final color = categoryColor(assessment.suitabilityCategory);
+          final isOwnAssessment = assessment.userId == currentUserId;
 
           return Card(
+            key: ValueKey('assessment-card-${assessment.id}'),
             margin: const EdgeInsets.only(bottom: 14),
             child: ListTile(
-              onTap: () async {
-                final updated = await Navigator.push<bool>(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => EditAssessmentScreen(
-                      assessment: assessment,
-                    ),
-                  ),
-                );
+              key: ValueKey('assessment-row-${assessment.id}'),
+              onTap: isOwnAssessment
+                  ? () async {
+                      final updated = await Navigator.push<bool>(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) =>
+                              EditAssessmentScreen(assessment: assessment),
+                        ),
+                      );
 
-                if (updated == true) {
-                  setState(() {
-                    isLoading = true;
-                  });
+                      if (updated == true) {
+                        setState(() {
+                          isLoading = true;
+                        });
 
-                  await loadAssessments();
-                }
-              },
+                        await loadAssessments();
+                      }
+                    }
+                  : null,
               contentPadding: const EdgeInsets.all(16),
               leading: CircleAvatar(
                 backgroundColor: color.withValues(alpha: 0.15),
-                child: Icon(
-                  Icons.location_on,
-                  color: color,
-                ),
+                child: Icon(Icons.location_on, color: color),
               ),
               title: Text(
                 assessment.locationName,
@@ -316,18 +318,23 @@ class _AssessmentListScreenState
                 padding: const EdgeInsets.only(top: 8),
                 child: Text(
                   'Score: ${assessment.finalScore.toStringAsFixed(1)}/100\n'
-                      '${assessment.suitabilityCategory}',
+                  '${assessment.suitabilityCategory}\n'
+                  '${isOwnAssessment ? 'Your assessment' : 'Company assessment • Read-only'}',
                 ),
               ),
               isThreeLine: true,
-              trailing: IconButton(
-                tooltip: 'Delete Assessment',
-                onPressed: () => deleteAssessment(assessment),
-                icon: const Icon(
-                  Icons.delete_outline,
-                  color: Colors.red,
-                ),
-              ),
+              trailing: isOwnAssessment
+                  ? IconButton(
+                      key: ValueKey('delete-assessment-${assessment.id}'),
+                      tooltip: 'Delete Assessment',
+                      onPressed: () => deleteAssessment(assessment),
+                      icon: const Icon(Icons.delete_outline, color: Colors.red),
+                    )
+                  : Icon(
+                      Icons.lock_outline,
+                      key: ValueKey('read-only-assessment-${assessment.id}'),
+                      color: Colors.black45,
+                    ),
             ),
           );
         },
