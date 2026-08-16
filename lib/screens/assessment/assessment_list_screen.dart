@@ -7,15 +7,18 @@ import 'add_assessment_screen.dart';
 import 'edit_assessment_screen.dart';
 
 typedef AssessmentLoader = Future<List<StationAssessment>> Function();
+typedef AssessmentDeleter = Future<void> Function(String assessmentId);
 typedef CurrentUserIdProvider = String? Function();
 
 class AssessmentListScreen extends StatefulWidget {
   final AssessmentLoader? assessmentLoader;
+  final AssessmentDeleter? assessmentDeleter;
   final CurrentUserIdProvider? currentUserIdProvider;
 
   const AssessmentListScreen({
     super.key,
     this.assessmentLoader,
+    this.assessmentDeleter,
     this.currentUserIdProvider,
   });
 
@@ -25,6 +28,7 @@ class AssessmentListScreen extends StatefulWidget {
 
 class _AssessmentListScreenState extends State<AssessmentListScreen> {
   late final AssessmentLoader assessmentLoader;
+  late final AssessmentDeleter assessmentDeleter;
   late final CurrentUserIdProvider currentUserIdProvider;
 
   List<StationAssessment> assessments = [];
@@ -37,16 +41,20 @@ class _AssessmentListScreenState extends State<AssessmentListScreen> {
     super.initState();
 
     final injectedLoader = widget.assessmentLoader;
+    final injectedDeleter = widget.assessmentDeleter;
     final injectedUserIdProvider = widget.currentUserIdProvider;
 
-    if (injectedLoader != null && injectedUserIdProvider != null) {
+    if (injectedLoader != null &&
+        injectedDeleter != null &&
+        injectedUserIdProvider != null) {
       assessmentLoader = injectedLoader;
+      assessmentDeleter = injectedDeleter;
       currentUserIdProvider = injectedUserIdProvider;
     } else {
       final client = Supabase.instance.client;
-      assessmentLoader =
-          injectedLoader ??
-          StationAssessmentRepository(client).fetchCompanyAssessments;
+      final repository = StationAssessmentRepository(client);
+      assessmentLoader = injectedLoader ?? repository.fetchCompanyAssessments;
+      assessmentDeleter = injectedDeleter ?? repository.deleteAssessment;
       currentUserIdProvider =
           injectedUserIdProvider ?? () => client.auth.currentUser?.id;
     }
@@ -132,16 +140,8 @@ class _AssessmentListScreenState extends State<AssessmentListScreen> {
 
     if (confirmed != true) return;
 
-    final user = Supabase.instance.client.auth.currentUser;
-
-    if (user == null) return;
-
     try {
-      await Supabase.instance.client
-          .from('station_assessments')
-          .delete()
-          .eq('id', assessment.id)
-          .eq('user_id', user.id);
+      await assessmentDeleter(assessment.id);
 
       if (!mounted) return;
 
@@ -157,18 +157,24 @@ class _AssessmentListScreenState extends State<AssessmentListScreen> {
       });
 
       await loadAssessments();
-    } on PostgrestException catch (error) {
+    } on AssessmentDeleteRejectedException {
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.message), backgroundColor: Colors.red),
+        const SnackBar(
+          content: Text(
+            'Assessment could not be deleted. It may be unavailable or you '
+            'may not have permission.',
+          ),
+          backgroundColor: Colors.red,
+        ),
       );
     } catch (error) {
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Unable to delete assessment'),
+          content: Text('Unable to delete assessment. Please try again.'),
           backgroundColor: Colors.red,
         ),
       );

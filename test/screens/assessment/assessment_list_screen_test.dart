@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smart_fuell_station_innovation/models/station_assessment.dart';
 import 'package:smart_fuell_station_innovation/screens/assessment/assessment_list_screen.dart';
+import 'package:smart_fuell_station_innovation/services/station_assessment_repository.dart';
 
 void main() {
   const currentUserId = '20000000-0000-0000-0000-000000000001';
@@ -124,21 +125,157 @@ void main() {
     expect(loadCount, 2);
     expect(find.text('No assessments yet'), findsOneWidget);
   });
+
+  testWidgets('cancelling deletion does not call the deleter', (tester) async {
+    var deleteCount = 0;
+    final ownAssessment = assessment(
+      id: 'own',
+      userId: currentUserId,
+      locationName: 'Own assessment',
+    );
+
+    await pumpAssessmentList(
+      tester,
+      loader: () async => [ownAssessment],
+      deleter: (_) async {
+        deleteCount++;
+      },
+      currentUserId: currentUserId,
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('delete-assessment-own')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+
+    expect(deleteCount, 0);
+    expect(find.byKey(const ValueKey('assessment-card-own')), findsOneWidget);
+  });
+
+  testWidgets('confirmed deletion passes the ID, succeeds, and reloads', (
+    tester,
+  ) async {
+    var loadCount = 0;
+    String? deletedId;
+    final ownAssessment = assessment(
+      id: 'own',
+      userId: currentUserId,
+      locationName: 'Own assessment',
+    );
+
+    await pumpAssessmentList(
+      tester,
+      loader: () async {
+        loadCount++;
+        return loadCount == 1 ? [ownAssessment] : const [];
+      },
+      deleter: (assessmentId) async {
+        deletedId = assessmentId;
+      },
+      currentUserId: currentUserId,
+    );
+    await tester.pumpAndSettle();
+
+    await confirmOwnAssessmentDeletion(tester);
+
+    expect(deletedId, 'own');
+    expect(loadCount, 2);
+    expect(find.text('Assessment deleted successfully'), findsOneWidget);
+    expect(find.text('No assessments yet'), findsOneWidget);
+  });
+
+  testWidgets('rejected deletion stays visible and reports neutral failure', (
+    tester,
+  ) async {
+    var loadCount = 0;
+    final ownAssessment = assessment(
+      id: 'own',
+      userId: currentUserId,
+      locationName: 'Own assessment',
+    );
+
+    await pumpAssessmentList(
+      tester,
+      loader: () async {
+        loadCount++;
+        return [ownAssessment];
+      },
+      deleter: (_) async => throw const AssessmentDeleteRejectedException(),
+      currentUserId: currentUserId,
+    );
+    await tester.pumpAndSettle();
+
+    await confirmOwnAssessmentDeletion(tester);
+
+    expect(loadCount, 1);
+    expect(find.text('Assessment deleted successfully'), findsNothing);
+    expect(
+      find.text(
+        'Assessment could not be deleted. It may be unavailable or you may '
+        'not have permission.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('assessment-card-own')), findsOneWidget);
+  });
+
+  testWidgets('generic deletion failure stays visible without reloading', (
+    tester,
+  ) async {
+    var loadCount = 0;
+    final ownAssessment = assessment(
+      id: 'own',
+      userId: currentUserId,
+      locationName: 'Own assessment',
+    );
+
+    await pumpAssessmentList(
+      tester,
+      loader: () async {
+        loadCount++;
+        return [ownAssessment];
+      },
+      deleter: (_) async => throw StateError('Sensitive backend detail'),
+      currentUserId: currentUserId,
+    );
+    await tester.pumpAndSettle();
+
+    await confirmOwnAssessmentDeletion(tester);
+
+    expect(loadCount, 1);
+    expect(find.text('Assessment deleted successfully'), findsNothing);
+    expect(
+      find.text('Unable to delete assessment. Please try again.'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Sensitive backend detail'), findsNothing);
+    expect(find.byKey(const ValueKey('assessment-card-own')), findsOneWidget);
+  });
 }
 
 Future<void> pumpAssessmentList(
   WidgetTester tester, {
   required AssessmentLoader loader,
+  AssessmentDeleter? deleter,
   required String currentUserId,
 }) {
   return tester.pumpWidget(
     MaterialApp(
       home: AssessmentListScreen(
         assessmentLoader: loader,
+        assessmentDeleter: deleter ?? (_) async {},
         currentUserIdProvider: () => currentUserId,
       ),
     ),
   );
+}
+
+Future<void> confirmOwnAssessmentDeletion(WidgetTester tester) async {
+  await tester.tap(find.byKey(const ValueKey('delete-assessment-own')));
+  await tester.pumpAndSettle();
+  await tester.tap(find.widgetWithText(ElevatedButton, 'Delete'));
+  await tester.pumpAndSettle();
 }
 
 StationAssessment assessment({
