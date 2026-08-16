@@ -564,7 +564,27 @@ $$;
 reset role;
 
 -- A profile without authoritative membership sees no assessments and cannot
--- insert a new one.
+-- insert, update, or delete. Capture an existing synthetic assessment ID while
+-- privileged so the restricted checks target a known row by primary key.
+select pg_temp.assert_true(
+  (
+    select count(*) = 1
+    from public.station_assessments
+    where location_name = 'B user protected row'
+  ),
+  'the no-company RLS target assessment must exist before access checks'
+);
+
+select pg_catalog.set_config(
+  'module2_test.no_company_target_id',
+  (
+    select id::text
+    from public.station_assessments
+    where location_name = 'B user protected row'
+  ),
+  true
+);
+
 set local role authenticated;
 select pg_catalog.set_config(
   'request.jwt.claim.sub',
@@ -585,7 +605,58 @@ exception
 end;
 $$;
 
+select pg_temp.assert_true(
+  (
+    with changed as (
+      update public.station_assessments
+      set recommendation = 'No-company user must not update'
+      where id = pg_catalog.current_setting(
+        'module2_test.no_company_target_id'
+      )::uuid
+      returning 1
+    )
+    select count(*) = 0 from changed
+  ),
+  'users without company membership must not update assessments'
+);
+
+select pg_temp.assert_true(
+  (
+    with removed as (
+      delete from public.station_assessments
+      where id = pg_catalog.current_setting(
+        'module2_test.no_company_target_id'
+      )::uuid
+      returning 1
+    )
+    select count(*) = 0 from removed
+  ),
+  'users without company membership must not delete assessments'
+);
+
 reset role;
+
+select pg_temp.assert_true(
+  (
+    select recommendation = 'Test recommendation'
+    from public.station_assessments
+    where id = pg_catalog.current_setting(
+      'module2_test.no_company_target_id'
+    )::uuid
+  ),
+  'rejected no-company update must leave the assessment unchanged'
+);
+
+select pg_temp.assert_true(
+  (
+    select count(*) = 1
+    from public.station_assessments
+    where id = pg_catalog.current_setting(
+      'module2_test.no_company_target_id'
+    )::uuid
+  ),
+  'rejected no-company delete must leave the assessment row present'
+);
 
 -- The unauthenticated role has no table privileges. All CRUD attempts are
 -- rejected rather than relying only on the absence of an anon RLS policy.
