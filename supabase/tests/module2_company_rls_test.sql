@@ -4,6 +4,15 @@
 
 begin;
 
+-- Some SQL Editor sessions do not materialize pg_temp until the first
+-- temporary object is created. This test-only table initializes that namespace
+-- before pg_temp.assert_true and pg_temp.insert_assessment are created; the
+-- final rollback removes it.
+create temporary table module2_rls_test_session_init (
+  initialized boolean not null default true
+)
+on commit drop;
+
 create function pg_temp.assert_true(
   p_condition boolean,
   p_message text
