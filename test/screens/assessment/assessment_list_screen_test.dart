@@ -9,6 +9,16 @@ import 'package:smart_fuell_station_innovation/services/station_assessment_repos
 void main() {
   const currentUserId = '20000000-0000-0000-0000-000000000001';
   const teammateUserId = '20000000-0000-0000-0000-000000000002';
+  const normalAccess = AssessmentAccessContext(
+    userId: currentUserId,
+    isCompanyAdmin: false,
+    hasCompany: true,
+  );
+  const adminAccess = AssessmentAccessContext(
+    userId: currentUserId,
+    isCompanyAdmin: true,
+    hasCompany: true,
+  );
 
   testWidgets('shows loading while the assessment future is pending', (
     tester,
@@ -18,7 +28,7 @@ void main() {
     await pumpAssessmentList(
       tester,
       loader: () => completer.future,
-      currentUserId: currentUserId,
+      accessLoader: () async => normalAccess,
     );
 
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
@@ -31,7 +41,7 @@ void main() {
     await pumpAssessmentList(
       tester,
       loader: () async => const [],
-      currentUserId: currentUserId,
+      accessLoader: () async => normalAccess,
     );
     await tester.pumpAndSettle();
 
@@ -40,6 +50,55 @@ void main() {
       find.text('Create an assessment to evaluate a location.'),
       findsOneWidget,
     );
+  });
+
+  testWidgets('a stale overlapping load cannot replace the newer result', (
+    tester,
+  ) async {
+    final firstLoad = Completer<List<StationAssessment>>();
+    final secondLoad = Completer<List<StationAssessment>>();
+    var loadCount = 0;
+    final staleAssessment = assessment(
+      id: 'stale',
+      userId: currentUserId,
+      locationName: 'Stale initial result',
+    );
+    final newerAssessment = assessment(
+      id: 'newer',
+      userId: currentUserId,
+      locationName: 'Newer overlapping result',
+    );
+
+    Future<List<StationAssessment>> loader() {
+      loadCount++;
+      return loadCount == 1 ? firstLoad.future : secondLoad.future;
+    }
+
+    await pumpAssessmentList(
+      tester,
+      loader: loader,
+      accessLoader: () async => normalAccess,
+    );
+    await tester.pump();
+    expect(loadCount, 1);
+
+    final state = tester.state(find.byType(AssessmentListScreen)) as dynamic;
+    final newerRequest = state.loadAssessments() as Future<void>;
+    await tester.pump();
+    expect(loadCount, 2);
+
+    secondLoad.complete([newerAssessment]);
+    await newerRequest;
+    await tester.pump();
+
+    expect(find.text('Newer overlapping result'), findsOneWidget);
+    expect(find.text('Stale initial result'), findsNothing);
+
+    firstLoad.complete([staleAssessment]);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Newer overlapping result'), findsOneWidget);
+    expect(find.text('Stale initial result'), findsNothing);
   });
 
   testWidgets('renders returned order and restricts teammate management', (
@@ -59,7 +118,7 @@ void main() {
     await pumpAssessmentList(
       tester,
       loader: () async => [teammateAssessment, ownAssessment],
-      currentUserId: currentUserId,
+      accessLoader: () async => normalAccess,
     );
     await tester.pumpAndSettle();
 
@@ -99,6 +158,7 @@ void main() {
 
   testWidgets('shows repository errors and retries loading', (tester) async {
     var loadCount = 0;
+    var accessCount = 0;
 
     Future<List<StationAssessment>> loader() async {
       loadCount++;
@@ -111,18 +171,23 @@ void main() {
     await pumpAssessmentList(
       tester,
       loader: loader,
-      currentUserId: currentUserId,
+      accessLoader: () async {
+        accessCount++;
+        return normalAccess;
+      },
     );
     await tester.pumpAndSettle();
 
     expect(find.text('Unable to load assessments'), findsOneWidget);
     expect(find.text('Try Again'), findsOneWidget);
     expect(loadCount, 1);
+    expect(accessCount, 1);
 
     await tester.tap(find.text('Try Again'));
     await tester.pumpAndSettle();
 
     expect(loadCount, 2);
+    expect(accessCount, 2);
     expect(find.text('No assessments yet'), findsOneWidget);
   });
 
@@ -140,7 +205,7 @@ void main() {
       deleter: (_) async {
         deleteCount++;
       },
-      currentUserId: currentUserId,
+      accessLoader: () async => normalAccess,
     );
     await tester.pumpAndSettle();
 
@@ -173,7 +238,7 @@ void main() {
       deleter: (assessmentId) async {
         deletedId = assessmentId;
       },
-      currentUserId: currentUserId,
+      accessLoader: () async => normalAccess,
     );
     await tester.pumpAndSettle();
 
@@ -202,7 +267,7 @@ void main() {
         return [ownAssessment];
       },
       deleter: (_) async => throw const AssessmentDeleteRejectedException(),
-      currentUserId: currentUserId,
+      accessLoader: () async => normalAccess,
     );
     await tester.pumpAndSettle();
 
@@ -237,7 +302,7 @@ void main() {
         return [ownAssessment];
       },
       deleter: (_) async => throw StateError('Sensitive backend detail'),
-      currentUserId: currentUserId,
+      accessLoader: () async => normalAccess,
     );
     await tester.pumpAndSettle();
 
@@ -252,27 +317,223 @@ void main() {
     expect(find.textContaining('Sensitive backend detail'), findsNothing);
     expect(find.byKey(const ValueKey('assessment-card-own')), findsOneWidget);
   });
+
+  testWidgets('company admin can edit and delete a teammate assessment', (
+    tester,
+  ) async {
+    final teammateAssessment = assessment(
+      id: 'teammate',
+      userId: teammateUserId,
+      locationName: 'Admin-managed teammate assessment',
+    );
+
+    await pumpAssessmentList(
+      tester,
+      loader: () async => [teammateAssessment],
+      accessLoader: () async => adminAccess,
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.textContaining('Company assessment • Admin access'),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('read-only-assessment-teammate')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('delete-assessment-teammate')),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('assessment-row-teammate')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Update Assessment'), findsOneWidget);
+  });
+
+  testWidgets('confirmed admin deletion passes teammate ID and reloads', (
+    tester,
+  ) async {
+    var loadCount = 0;
+    var accessCount = 0;
+    String? deletedId;
+    final teammateAssessment = assessment(
+      id: 'teammate',
+      userId: teammateUserId,
+      locationName: 'Admin-managed teammate assessment',
+    );
+
+    await pumpAssessmentList(
+      tester,
+      loader: () async {
+        loadCount++;
+        return loadCount == 1 ? [teammateAssessment] : const [];
+      },
+      accessLoader: () async {
+        accessCount++;
+        return adminAccess;
+      },
+      deleter: (assessmentId) async {
+        deletedId = assessmentId;
+      },
+    );
+    await tester.pumpAndSettle();
+
+    await confirmAssessmentDeletion(tester, 'teammate');
+
+    expect(deletedId, 'teammate');
+    expect(loadCount, 2);
+    expect(accessCount, 2);
+    expect(find.text('Assessment deleted successfully'), findsOneWidget);
+    expect(find.text('No assessments yet'), findsOneWidget);
+  });
+
+  testWidgets('rejected admin deletion stays neutral and visible', (
+    tester,
+  ) async {
+    var loadCount = 0;
+    final teammateAssessment = assessment(
+      id: 'teammate',
+      userId: teammateUserId,
+      locationName: 'Admin-managed teammate assessment',
+    );
+
+    await pumpAssessmentList(
+      tester,
+      loader: () async {
+        loadCount++;
+        return [teammateAssessment];
+      },
+      accessLoader: () async => adminAccess,
+      deleter: (_) async => throw const AssessmentDeleteRejectedException(),
+    );
+    await tester.pumpAndSettle();
+
+    await confirmAssessmentDeletion(tester, 'teammate');
+
+    expect(loadCount, 1);
+    expect(find.text('Assessment deleted successfully'), findsNothing);
+    expect(
+      find.text(
+        'Assessment could not be deleted. It may be unavailable or you may '
+        'not have permission.',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('assessment-card-teammate')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('missing authoritative company access is a load error', (
+    tester,
+  ) async {
+    var assessmentLoadCount = 0;
+
+    await pumpAssessmentList(
+      tester,
+      loader: () async {
+        assessmentLoadCount++;
+        return const [];
+      },
+      accessLoader: () async => const AssessmentAccessContext(
+        userId: currentUserId,
+        isCompanyAdmin: false,
+        hasCompany: false,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(assessmentLoadCount, 0);
+    expect(find.text('Unable to load assessments'), findsOneWidget);
+    expect(find.text('No assessments yet'), findsNothing);
+  });
+
+  testWidgets('blank authoritative user ID is a load error', (tester) async {
+    var assessmentLoadCount = 0;
+
+    await pumpAssessmentList(
+      tester,
+      loader: () async {
+        assessmentLoadCount++;
+        return const [];
+      },
+      accessLoader: () async => const AssessmentAccessContext(
+        userId: '   ',
+        isCompanyAdmin: false,
+        hasCompany: true,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(assessmentLoadCount, 0);
+    expect(find.text('Unable to load assessments'), findsOneWidget);
+    expect(find.text('No assessments yet'), findsNothing);
+  });
+
+  testWidgets('access errors stay neutral and retry reloads access', (
+    tester,
+  ) async {
+    var accessCount = 0;
+
+    await pumpAssessmentList(
+      tester,
+      loader: () async => const [],
+      accessLoader: () async {
+        accessCount++;
+        if (accessCount == 1) {
+          throw StateError('Sensitive profile backend detail');
+        }
+        return normalAccess;
+      },
+    );
+    await tester.pumpAndSettle();
+
+    expect(accessCount, 1);
+    expect(find.text('Unable to load assessments'), findsOneWidget);
+    expect(
+      find.textContaining('Sensitive profile backend detail'),
+      findsNothing,
+    );
+    expect(find.text('No assessments yet'), findsNothing);
+
+    await tester.tap(find.text('Try Again'));
+    await tester.pumpAndSettle();
+
+    expect(accessCount, 2);
+    expect(find.text('No assessments yet'), findsOneWidget);
+  });
 }
 
 Future<void> pumpAssessmentList(
   WidgetTester tester, {
   required AssessmentLoader loader,
   AssessmentDeleter? deleter,
-  required String currentUserId,
+  required AssessmentAccessLoader accessLoader,
 }) {
   return tester.pumpWidget(
     MaterialApp(
       home: AssessmentListScreen(
         assessmentLoader: loader,
         assessmentDeleter: deleter ?? (_) async {},
-        currentUserIdProvider: () => currentUserId,
+        accessLoader: accessLoader,
       ),
     ),
   );
 }
 
 Future<void> confirmOwnAssessmentDeletion(WidgetTester tester) async {
-  await tester.tap(find.byKey(const ValueKey('delete-assessment-own')));
+  await confirmAssessmentDeletion(tester, 'own');
+}
+
+Future<void> confirmAssessmentDeletion(
+  WidgetTester tester,
+  String assessmentId,
+) async {
+  await tester.tap(find.byKey(ValueKey('delete-assessment-$assessmentId')));
   await tester.pumpAndSettle();
   await tester.tap(find.widgetWithText(ElevatedButton, 'Delete'));
   await tester.pumpAndSettle();

@@ -2,24 +2,37 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../models/station_assessment.dart';
+import '../../services/profile_service.dart';
 import '../../services/station_assessment_repository.dart';
 import 'add_assessment_screen.dart';
 import 'edit_assessment_screen.dart';
 
 typedef AssessmentLoader = Future<List<StationAssessment>> Function();
 typedef AssessmentDeleter = Future<void> Function(String assessmentId);
-typedef CurrentUserIdProvider = String? Function();
+typedef AssessmentAccessLoader = Future<AssessmentAccessContext> Function();
+
+class AssessmentAccessContext {
+  final String userId;
+  final bool isCompanyAdmin;
+  final bool hasCompany;
+
+  const AssessmentAccessContext({
+    required this.userId,
+    required this.isCompanyAdmin,
+    required this.hasCompany,
+  });
+}
 
 class AssessmentListScreen extends StatefulWidget {
   final AssessmentLoader? assessmentLoader;
   final AssessmentDeleter? assessmentDeleter;
-  final CurrentUserIdProvider? currentUserIdProvider;
+  final AssessmentAccessLoader? accessLoader;
 
   const AssessmentListScreen({
     super.key,
     this.assessmentLoader,
     this.assessmentDeleter,
-    this.currentUserIdProvider,
+    this.accessLoader,
   });
 
   @override
@@ -29,12 +42,13 @@ class AssessmentListScreen extends StatefulWidget {
 class _AssessmentListScreenState extends State<AssessmentListScreen> {
   late final AssessmentLoader assessmentLoader;
   late final AssessmentDeleter assessmentDeleter;
-  late final CurrentUserIdProvider currentUserIdProvider;
+  late final AssessmentAccessLoader accessLoader;
 
   List<StationAssessment> assessments = [];
-  String? currentUserId;
+  AssessmentAccessContext? accessContext;
   bool isLoading = true;
   String? errorMessage;
+  int loadGeneration = 0;
 
   @override
   void initState() {
@@ -42,53 +56,59 @@ class _AssessmentListScreenState extends State<AssessmentListScreen> {
 
     final injectedLoader = widget.assessmentLoader;
     final injectedDeleter = widget.assessmentDeleter;
-    final injectedUserIdProvider = widget.currentUserIdProvider;
+    final injectedAccessLoader = widget.accessLoader;
 
     if (injectedLoader != null &&
         injectedDeleter != null &&
-        injectedUserIdProvider != null) {
+        injectedAccessLoader != null) {
       assessmentLoader = injectedLoader;
       assessmentDeleter = injectedDeleter;
-      currentUserIdProvider = injectedUserIdProvider;
+      accessLoader = injectedAccessLoader;
     } else {
       final client = Supabase.instance.client;
       final repository = StationAssessmentRepository(client);
+      final profileService = ProfileService(client: client);
       assessmentLoader = injectedLoader ?? repository.fetchCompanyAssessments;
       assessmentDeleter = injectedDeleter ?? repository.deleteAssessment;
-      currentUserIdProvider =
-          injectedUserIdProvider ?? () => client.auth.currentUser?.id;
+      accessLoader =
+          injectedAccessLoader ??
+          () async {
+            final profile = await profileService.fetchCurrentProfile();
+            return AssessmentAccessContext(
+              userId: profile.userId,
+              isCompanyAdmin: profile.isCompanyAdmin,
+              hasCompany: profile.companyId?.trim().isNotEmpty == true,
+            );
+          };
     }
 
     loadAssessments();
   }
 
   Future<void> loadAssessments() async {
-    final userId = currentUserIdProvider();
-
-    if (userId == null) {
-      setState(() {
-        currentUserId = null;
-        isLoading = false;
-        errorMessage = 'No logged-in user found';
-      });
-      return;
-    }
+    final requestGeneration = ++loadGeneration;
 
     try {
+      final loadedAccess = await accessLoader();
+      if (loadedAccess.userId.trim().isEmpty || !loadedAccess.hasCompany) {
+        throw StateError('Authoritative company access is unavailable.');
+      }
+
       final loadedAssessments = await assessmentLoader();
 
-      if (!mounted) return;
+      if (!mounted || requestGeneration != loadGeneration) return;
 
       setState(() {
         assessments = loadedAssessments;
-        currentUserId = userId;
+        accessContext = loadedAccess;
         isLoading = false;
         errorMessage = null;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || requestGeneration != loadGeneration) return;
 
       setState(() {
+        accessContext = null;
         isLoading = false;
         errorMessage = 'Unable to load assessments';
       });
@@ -282,14 +302,16 @@ class _AssessmentListScreenState extends State<AssessmentListScreen> {
         itemBuilder: (context, index) {
           final assessment = assessments[index];
           final color = categoryColor(assessment.suitabilityCategory);
-          final isOwnAssessment = assessment.userId == currentUserId;
+          final currentAccess = accessContext!;
+          final isOwnAssessment = assessment.userId == currentAccess.userId;
+          final canManage = isOwnAssessment || currentAccess.isCompanyAdmin;
 
           return Card(
             key: ValueKey('assessment-card-${assessment.id}'),
             margin: const EdgeInsets.only(bottom: 14),
             child: ListTile(
               key: ValueKey('assessment-row-${assessment.id}'),
-              onTap: isOwnAssessment
+              onTap: canManage
                   ? () async {
                       final updated = await Navigator.push<bool>(
                         context,
@@ -325,11 +347,15 @@ class _AssessmentListScreenState extends State<AssessmentListScreen> {
                 child: Text(
                   'Score: ${assessment.finalScore.toStringAsFixed(1)}/100\n'
                   '${assessment.suitabilityCategory}\n'
-                  '${isOwnAssessment ? 'Your assessment' : 'Company assessment • Read-only'}',
+                  '${isOwnAssessment
+                      ? 'Your assessment'
+                      : currentAccess.isCompanyAdmin
+                      ? 'Company assessment • Admin access'
+                      : 'Company assessment • Read-only'}',
                 ),
               ),
               isThreeLine: true,
-              trailing: isOwnAssessment
+              trailing: canManage
                   ? IconButton(
                       key: ValueKey('delete-assessment-${assessment.id}'),
                       tooltip: 'Delete Assessment',
