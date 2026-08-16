@@ -10,6 +10,13 @@ class AssessmentDeleteRejectedException implements Exception {
   String toString() => 'Assessment deletion was rejected.';
 }
 
+class AssessmentUpdateRejectedException implements Exception {
+  const AssessmentUpdateRejectedException();
+
+  @override
+  String toString() => 'Assessment update was rejected.';
+}
+
 class StationAssessmentRepository {
   final SupabaseClient _client;
 
@@ -56,6 +63,49 @@ class StationAssessmentRepository {
         .single();
 
     return StationAssessment.fromMap(data);
+  }
+
+  /// Updates one RLS-authorized assessment by primary key and returns its row.
+  ///
+  /// [StationAssessmentCreateInput] is temporarily reused because it exactly
+  /// represents the 14 writable fields in the legacy manual form. It contains
+  /// no identity or ownership fields, so only its content map is sent.
+  ///
+  /// PostgreSQL RLS decides creator, future same-company admin, and
+  /// cross-company authorization without client ownership filters. PostgREST
+  /// may return zero rows for a missing or unauthorized record without proving
+  /// which case occurred, so verifying the affected-row count is mandatory.
+  Future<StationAssessment> updateAssessment(
+    String assessmentId,
+    StationAssessmentCreateInput input,
+  ) async {
+    final normalizedId = assessmentId.trim();
+    if (normalizedId.isEmpty) {
+      throw ArgumentError.value(
+        assessmentId,
+        'assessmentId',
+        'Assessment ID must not be blank.',
+      );
+    }
+
+    if (_client.auth.currentSession == null) {
+      throw StateError('An authenticated session is required.');
+    }
+
+    final updatedRows = await _client
+        .from('station_assessments')
+        .update(input.toInsertMap())
+        .eq('id', normalizedId)
+        .select();
+
+    if (updatedRows.isEmpty) {
+      throw const AssessmentUpdateRejectedException();
+    }
+    if (updatedRows.length > 1) {
+      throw StateError('Assessment update affected more than one row.');
+    }
+
+    return StationAssessment.fromMap(updatedRows.single);
   }
 
   /// Deletes one RLS-authorized assessment by primary key.
