@@ -85,14 +85,35 @@ $$;
 -- SET ROLE changes the effective database role inside this session. Grant only
 -- the temporary helper access needed by the simulated API roles; rollback and
 -- session teardown remove these temporary objects and grants.
-grant usage on schema pg_temp to authenticated, anon;
+do $$
+declare
+  v_temp_schema text;
+begin
+  select namespace.nspname
+  into v_temp_schema
+  from pg_catalog.pg_namespace as namespace
+  where namespace.oid = pg_catalog.pg_my_temp_schema();
 
-grant execute
-on function pg_temp.assert_true(boolean, text) to authenticated;
+  if v_temp_schema is null then
+    raise exception 'Module 2 RLS test temporary schema was not initialized';
+  end if;
 
-grant execute
-on function pg_temp.insert_assessment(text, uuid, uuid)
-to authenticated, anon;
+  execute pg_catalog.format(
+    'grant usage on schema %I to authenticated, anon',
+    v_temp_schema
+  );
+
+  execute pg_catalog.format(
+    'grant execute on function %I.assert_true(boolean, text) to authenticated',
+    v_temp_schema
+  );
+
+  execute pg_catalog.format(
+    'grant execute on function %I.insert_assessment(text, uuid, uuid) to authenticated, anon',
+    v_temp_schema
+  );
+end;
+$$;
 
 -- Synthetic fixture identifiers only; these are not production users or data.
 insert into public.fuel_companies (
