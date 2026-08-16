@@ -30,8 +30,62 @@ $$;
 
 create function pg_temp.insert_assessment(
   p_location_name text,
-  p_user_id uuid default null,
-  p_company_id uuid default null
+  p_user_id uuid default null
+)
+returns uuid
+language plpgsql
+set search_path = ''
+as $$
+declare
+  v_assessment_id uuid;
+begin
+  insert into public.station_assessments (
+    user_id,
+    location_name,
+    population_density,
+    traffic_level,
+    registered_vehicle_count,
+    nearby_fuel_stations,
+    competitor_distance_km,
+    road_accessibility,
+    commercial_activity,
+    residential_activity,
+    land_accessibility,
+    final_score,
+    suitability_category,
+    recommendation,
+    explanation
+  )
+  values (
+    p_user_id,
+    p_location_name,
+    100,
+    3,
+    1000,
+    2,
+    3,
+    3,
+    3,
+    3,
+    3,
+    50,
+    'Moderate',
+    'Test recommendation',
+    'Test explanation'
+  )
+  returning id into v_assessment_id;
+
+  return v_assessment_id;
+end;
+$$;
+
+-- This separate helper is used only to prove the company_id column ACL and
+-- ownership trigger independently. Normal client-shaped inserts never include
+-- company_id.
+create function pg_temp.insert_assessment_with_company_for_test(
+  p_location_name text,
+  p_user_id uuid,
+  p_company_id uuid
 )
 returns uuid
 language plpgsql
@@ -109,7 +163,12 @@ begin
   );
 
   execute pg_catalog.format(
-    'grant execute on function %I.insert_assessment(text, uuid, uuid) to authenticated, anon',
+    'grant execute on function %I.insert_assessment(text, uuid) to authenticated, anon',
+    v_temp_schema
+  );
+
+  execute pg_catalog.format(
+    'grant execute on function %I.insert_assessment_with_company_for_test(text, uuid, uuid) to authenticated',
     v_temp_schema
   );
 end;
@@ -269,8 +328,7 @@ select pg_catalog.set_config(
 );
 select pg_temp.insert_assessment(
   'A1 shared read and update',
-  '20000000-0000-0000-0000-000000000101',
-  null
+  '20000000-0000-0000-0000-000000000101'
 );
 select pg_temp.insert_assessment('A1 delete own');
 
@@ -458,14 +516,13 @@ select pg_temp.assert_true(
   'normal users must not delete another same-company assessment'
 );
 
--- Supplying another creator or another company cannot create transferred
--- ownership. These conflicts are rejected by the ownership trigger.
+-- Supplying another creator cannot create transferred ownership. This conflict
+-- reaches and is rejected by the ownership trigger.
 do $$
 begin
   perform pg_temp.insert_assessment(
     'Invalid transferred creator',
-    '20000000-0000-0000-0000-000000000102',
-    '10000000-0000-0000-0000-000000000001'
+    '20000000-0000-0000-0000-000000000102'
   );
   raise exception 'Expected transferred creator insert to fail';
 exception
@@ -473,18 +530,109 @@ exception
 end;
 $$;
 
+-- A normal authenticated client cannot submit company_id because the column
+-- ACL rejects it before ownership derivation is considered.
+select pg_temp.assert_true(
+  not pg_catalog.has_column_privilege(
+    'authenticated',
+    'public.station_assessments',
+    'company_id',
+    'INSERT'
+  ),
+  'authenticated must not have company_id INSERT privilege'
+);
+
 do $$
 begin
-  perform pg_temp.insert_assessment(
-    'Invalid transferred company',
+  perform pg_temp.insert_assessment_with_company_for_test(
+    'Invalid transferred company ACL',
     '20000000-0000-0000-0000-000000000101',
     '10000000-0000-0000-0000-000000000002'
   );
-  raise exception 'Expected transferred company insert to fail';
+  raise exception 'Expected client-supplied company_id insert ACL to fail';
 exception
   when sqlstate '42501' then null;
 end;
 $$;
+
+reset role;
+
+select pg_temp.assert_true(
+  (
+    select count(*) = 0
+    from public.station_assessments
+    where location_name = 'Invalid transferred company ACL'
+  ),
+  'company_id INSERT ACL rejection must not create an assessment'
+);
+
+-- Temporarily expose only company_id INSERT so the immutable ownership trigger
+-- is tested as an independent second layer, then restore and verify the ACL.
+grant insert (company_id)
+on public.station_assessments
+to authenticated;
+
+select pg_temp.assert_true(
+  pg_catalog.has_column_privilege(
+    'authenticated',
+    'public.station_assessments',
+    'company_id',
+    'INSERT'
+  ),
+  'trigger-layer test requires temporary company_id INSERT privilege'
+);
+
+set local role authenticated;
+select pg_catalog.set_config(
+  'request.jwt.claim.sub',
+  '20000000-0000-0000-0000-000000000101',
+  true
+);
+
+do $$
+begin
+  perform pg_temp.insert_assessment_with_company_for_test(
+    'Invalid transferred company trigger',
+    '20000000-0000-0000-0000-000000000101',
+    '10000000-0000-0000-0000-000000000002'
+  );
+  raise exception 'Expected ownership trigger to reject transferred company';
+exception
+  when sqlstate '42501' then null;
+end;
+$$;
+
+reset role;
+
+revoke insert (company_id)
+on public.station_assessments
+from authenticated;
+
+select pg_temp.assert_true(
+  not pg_catalog.has_column_privilege(
+    'authenticated',
+    'public.station_assessments',
+    'company_id',
+    'INSERT'
+  ),
+  'authenticated company_id INSERT privilege must be revoked after trigger test'
+);
+
+select pg_temp.assert_true(
+  (
+    select count(*) = 0
+    from public.station_assessments
+    where location_name = 'Invalid transferred company trigger'
+  ),
+  'ownership-trigger rejection must not create a transferred assessment'
+);
+
+set local role authenticated;
+select pg_catalog.set_config(
+  'request.jwt.claim.sub',
+  '20000000-0000-0000-0000-000000000101',
+  true
+);
 
 -- Ownership columns cannot be updated directly. Column privileges reject the
 -- request; the ownership trigger remains a second line of defence.
@@ -571,8 +719,7 @@ do $$
 begin
   perform pg_temp.insert_assessment(
     'Admin invalid creator assignment',
-    '20000000-0000-0000-0000-000000000102',
-    '10000000-0000-0000-0000-000000000001'
+    '20000000-0000-0000-0000-000000000102'
   );
   raise exception 'Expected admin creator assignment to fail';
 exception
