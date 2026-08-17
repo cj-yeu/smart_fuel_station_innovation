@@ -296,6 +296,40 @@ select pg_temp.assert_true(
 );
 
 select pg_temp.assert_true(
+  exists (
+    select 1
+    from pg_catalog.pg_attribute as attribute_entry
+    where attribute_entry.attrelid = 'public.station_assessments'::regclass
+      and attribute_entry.attnum > 0
+      and not attribute_entry.attisdropped
+      and attribute_entry.attacl is null
+  ),
+  'expected at least one NULL pg_attribute.attacl for station_assessments'
+);
+
+select pg_temp.assert_true(
+  not exists (
+    select 1
+    from pg_catalog.pg_attribute as attribute_entry
+    where attribute_entry.attrelid = 'public.station_assessments'::regclass
+      and attribute_entry.attnum > 0
+      and not attribute_entry.attisdropped
+      and case
+        when attribute_entry.attacl is null then false
+        else exists (
+          select 1
+          from pg_catalog.aclexplode(
+            attribute_entry.attacl
+          ) as column_acl
+          where column_acl.grantee = 0
+            and column_acl.privilege_type = 'UPDATE'
+        )
+      end
+  ),
+  'PUBLIC assessment column UPDATE must remain absent'
+);
+
+select pg_temp.assert_true(
   pg_catalog.has_function_privilege(
     'authenticated',
     'public.validate_east_malaysia_site(double precision,double precision,smallint)',
