@@ -6,14 +6,20 @@ import '../../models/station_assessment_create_input.dart';
 import '../../services/station_assessment_repository.dart';
 import '../../services/station_assessment_service.dart';
 import 'assessment_result_screen.dart';
+import 'east_malaysia_map_screen.dart';
 
 typedef AssessmentCreator =
     Future<StationAssessment> Function(StationAssessmentCreateInput input);
 
 class AddAssessmentScreen extends StatefulWidget {
   final AssessmentCreator? assessmentCreator;
+  final WidgetBuilder? mapScreenBuilder;
 
-  const AddAssessmentScreen({super.key, this.assessmentCreator});
+  const AddAssessmentScreen({
+    super.key,
+    this.assessmentCreator,
+    this.mapScreenBuilder,
+  });
 
   @override
   State<AddAssessmentScreen> createState() => _AddAssessmentScreenState();
@@ -175,6 +181,22 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
       body: ListView(
         padding: const EdgeInsets.all(24),
         children: [
+          OutlinedButton.icon(
+            key: const ValueKey('view-east-malaysia-map-button'),
+            onPressed: () {
+              Navigator.push<void>(
+                context,
+                MaterialPageRoute(
+                  builder:
+                      widget.mapScreenBuilder ??
+                      (context) => const EastMalaysiaMapScreen(),
+                ),
+              );
+            },
+            icon: const Icon(Icons.map_outlined),
+            label: const Text('View East Malaysia Map'),
+          ),
+          const SizedBox(height: 20),
           const Text(
             'Location and Demand',
             style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold),

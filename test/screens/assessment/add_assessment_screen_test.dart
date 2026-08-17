@@ -8,6 +8,48 @@ import 'package:smart_fuell_station_innovation/screens/assessment/add_assessment
 import 'package:smart_fuell_station_innovation/services/station_assessment_service.dart';
 
 void main() {
+  testWidgets('map route preserves entered form values when returning', (
+    tester,
+  ) async {
+    await pumpAddAssessment(
+      tester,
+      creator: (_) async => persistedAssessment,
+      mapScreenBuilder: (context) => Scaffold(
+        appBar: AppBar(title: const Text('Injected map screen')),
+        body: Center(
+          child: ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Return from map'),
+          ),
+        ),
+      ),
+    );
+
+    final mapButton = find.text('View East Malaysia Map');
+    final formHeading = find.text('Location and Demand');
+    expect(mapButton, findsOneWidget);
+    expect(formHeading, findsOneWidget);
+    expect(
+      tester.getTopLeft(mapButton).dy,
+      lessThan(tester.getTopLeft(formHeading).dy),
+    );
+
+    final fields = find.byType(TextField);
+    await tester.enterText(fields.at(0), 'Kuching candidate');
+    await tester.enterText(fields.at(1), '2468.5');
+
+    await tester.tap(mapButton);
+    await tester.pumpAndSettle();
+    expect(find.text('Injected map screen'), findsOneWidget);
+
+    await tester.tap(find.text('Return from map'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('New Assessment'), findsOneWidget);
+    expect(find.text('Kuching candidate'), findsOneWidget);
+    expect(find.text('2468.5'), findsOneWidget);
+  });
+
   testWidgets('invalid form does not call the creator', (tester) async {
     var createCount = 0;
 
@@ -181,9 +223,15 @@ void main() {
 Future<void> pumpAddAssessment(
   WidgetTester tester, {
   required AssessmentCreator creator,
+  WidgetBuilder? mapScreenBuilder,
 }) {
   return tester.pumpWidget(
-    MaterialApp(home: AddAssessmentScreen(assessmentCreator: creator)),
+    MaterialApp(
+      home: AddAssessmentScreen(
+        assessmentCreator: creator,
+        mapScreenBuilder: mapScreenBuilder,
+      ),
+    ),
   );
 }
 
