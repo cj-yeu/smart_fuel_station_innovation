@@ -2,12 +2,112 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:smart_fuell_station_innovation/models/east_malaysia_site_validation_result.dart';
+import 'package:smart_fuell_station_innovation/models/east_malaysia_territory.dart';
+import 'package:smart_fuell_station_innovation/models/geo_point.dart';
 import 'package:smart_fuell_station_innovation/models/station_assessment.dart';
 import 'package:smart_fuell_station_innovation/models/station_assessment_create_input.dart';
 import 'package:smart_fuell_station_innovation/screens/assessment/add_assessment_screen.dart';
 import 'package:smart_fuell_station_innovation/services/station_assessment_service.dart';
 
 void main() {
+  testWidgets('validated site can be restored, cancelled, and replaced', (
+    tester,
+  ) async {
+    final firstResult = insideResult(
+      point: GeoPoint(latitude: 5.9804, longitude: 116.0735),
+      radius: 5,
+      territory: EastMalaysiaTerritory.sabah,
+      datasetId: firstDatasetId,
+    );
+    final replacementResult = insideResult(
+      point: GeoPoint(latitude: 1.5533, longitude: 110.3592),
+      radius: 10,
+      territory: EastMalaysiaTerritory.sarawak,
+      datasetId: replacementDatasetId,
+    );
+    final receivedInitialResults = <EastMalaysiaSiteValidationResult?>[];
+
+    await pumpAddAssessment(
+      tester,
+      creator: (_) async => persistedAssessment,
+      mapScreenBuilder: (context, initialValidationResult) {
+        receivedInitialResults.add(initialValidationResult);
+        return Scaffold(
+          appBar: AppBar(title: const Text('Injected map screen')),
+          body: Column(
+            children: [
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel map'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(
+                  context,
+                  receivedInitialResults.length == 1
+                      ? firstResult
+                      : replacementResult,
+                ),
+                child: const Text('Return candidate'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    final mapButton = find.text('Select Site on Map');
+    final formHeading = find.text('Location and Demand');
+    expect(mapButton, findsOneWidget);
+    expect(formHeading, findsOneWidget);
+    expect(
+      tester.getTopLeft(mapButton).dy,
+      lessThan(tester.getTopLeft(formHeading).dy),
+    );
+
+    final fields = find.byType(TextField);
+    await tester.enterText(fields.at(0), 'Kuching candidate');
+    await tester.enterText(fields.at(1), '2468.5');
+
+    await tester.tap(mapButton);
+    await tester.pumpAndSettle();
+    expect(find.text('Injected map screen'), findsOneWidget);
+    expect(receivedInitialResults, <EastMalaysiaSiteValidationResult?>[null]);
+
+    await tester.tap(find.text('Return candidate'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('5.98040'), findsOneWidget);
+    expect(find.textContaining('116.07350'), findsOneWidget);
+    expect(find.textContaining('Radius: 5 km'), findsOneWidget);
+    expect(find.textContaining('Confirmed territory: Sabah'), findsOneWidget);
+    expect(find.textContaining('Geographically validated'), findsOneWidget);
+    expect(find.textContaining(firstDatasetId), findsNothing);
+
+    await tester.tap(mapButton);
+    await tester.pumpAndSettle();
+    expect(receivedInitialResults.last, same(firstResult));
+    await tester.tap(find.text('Cancel map'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('5.98040'), findsOneWidget);
+    expect(find.textContaining('Radius: 5 km'), findsOneWidget);
+
+    await tester.tap(mapButton);
+    await tester.pumpAndSettle();
+    expect(receivedInitialResults.last, same(firstResult));
+    await tester.tap(find.text('Return candidate'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('1.55330'), findsOneWidget);
+    expect(find.textContaining('110.35920'), findsOneWidget);
+    expect(find.textContaining('Radius: 10 km'), findsOneWidget);
+    expect(find.textContaining('Confirmed territory: Sarawak'), findsOneWidget);
+    expect(find.textContaining(replacementDatasetId), findsNothing);
+    expect(find.text('Kuching candidate'), findsOneWidget);
+    expect(find.text('2468.5'), findsOneWidget);
+  });
+
   testWidgets('invalid form does not call the creator', (tester) async {
     var createCount = 0;
 
@@ -181,9 +281,15 @@ void main() {
 Future<void> pumpAddAssessment(
   WidgetTester tester, {
   required AssessmentCreator creator,
+  AssessmentMapScreenBuilder? mapScreenBuilder,
 }) {
   return tester.pumpWidget(
-    MaterialApp(home: AddAssessmentScreen(assessmentCreator: creator)),
+    MaterialApp(
+      home: AddAssessmentScreen(
+        assessmentCreator: creator,
+        mapScreenBuilder: mapScreenBuilder,
+      ),
+    ),
   );
 }
 
@@ -273,3 +379,23 @@ final persistedAssessment = StationAssessment(
   createdAt: DateTime.parse('2026-08-16T01:02:03.000Z'),
   updatedAt: DateTime.parse('2026-08-16T01:02:03.000Z'),
 );
+
+const firstDatasetId = '123e4567-e89b-12d3-a456-426614174000';
+const replacementDatasetId = '223e4567-e89b-12d3-a456-426614174000';
+
+EastMalaysiaSiteValidationResult insideResult({
+  required GeoPoint point,
+  required double radius,
+  required EastMalaysiaTerritory territory,
+  required String datasetId,
+}) {
+  return EastMalaysiaSiteValidationResult.fromRpcRow(
+    row: {
+      'validation_status': 'inside',
+      'confirmed_territory': territory.storageValue,
+      'boundary_dataset_id': datasetId,
+    },
+    point: point,
+    analysisRadiusKm: radius,
+  );
+}

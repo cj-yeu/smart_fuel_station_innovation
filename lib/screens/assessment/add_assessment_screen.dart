@@ -1,19 +1,31 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../models/east_malaysia_site_validation_result.dart';
 import '../../models/station_assessment.dart';
 import '../../models/station_assessment_create_input.dart';
 import '../../services/station_assessment_repository.dart';
 import '../../services/station_assessment_service.dart';
 import 'assessment_result_screen.dart';
+import 'east_malaysia_map_screen.dart';
 
 typedef AssessmentCreator =
     Future<StationAssessment> Function(StationAssessmentCreateInput input);
+typedef AssessmentMapScreenBuilder =
+    Widget Function(
+      BuildContext context,
+      EastMalaysiaSiteValidationResult? initialValidationResult,
+    );
 
 class AddAssessmentScreen extends StatefulWidget {
   final AssessmentCreator? assessmentCreator;
+  final AssessmentMapScreenBuilder? mapScreenBuilder;
 
-  const AddAssessmentScreen({super.key, this.assessmentCreator});
+  const AddAssessmentScreen({
+    super.key,
+    this.assessmentCreator,
+    this.mapScreenBuilder,
+  });
 
   @override
   State<AddAssessmentScreen> createState() => _AddAssessmentScreenState();
@@ -35,6 +47,7 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
   int landAccessibility = 3;
 
   bool isSaving = false;
+  EastMalaysiaSiteValidationResult? selectedSiteValidationResult;
 
   @override
   void initState() {
@@ -153,6 +166,28 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
     );
   }
 
+  Future<void> selectSiteOnMap() async {
+    final selectedResult =
+        await Navigator.push<EastMalaysiaSiteValidationResult>(
+          context,
+          MaterialPageRoute(
+            builder: (context) =>
+                widget.mapScreenBuilder?.call(
+                  context,
+                  selectedSiteValidationResult,
+                ) ??
+                EastMalaysiaMapScreen(
+                  initialValidationResult: selectedSiteValidationResult,
+                ),
+          ),
+        );
+
+    if (!mounted || selectedResult == null) return;
+    setState(() {
+      selectedSiteValidationResult = selectedResult;
+    });
+  }
+
   @override
   void dispose() {
     locationController.dispose();
@@ -175,6 +210,37 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
       body: ListView(
         padding: const EdgeInsets.all(24),
         children: [
+          OutlinedButton.icon(
+            key: const ValueKey('view-east-malaysia-map-button'),
+            onPressed: selectSiteOnMap,
+            icon: const Icon(Icons.map_outlined),
+            label: const Text('Select Site on Map'),
+          ),
+          if (selectedSiteValidationResult?.candidate.isValidatedInside ==
+              true) ...[
+            const SizedBox(height: 12),
+            DecoratedBox(
+              decoration: const BoxDecoration(
+                color: Color(0xFFE7F3EC),
+                borderRadius: BorderRadius.all(Radius.circular(12)),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Text(
+                  'Validated site: '
+                  '${selectedSiteValidationResult!.candidate.point.latitude.toStringAsFixed(5)}, '
+                  '${selectedSiteValidationResult!.candidate.point.longitude.toStringAsFixed(5)}'
+                  '\nRadius: '
+                  '${selectedSiteValidationResult!.candidate.analysisRadiusKm.toStringAsFixed(0)} km'
+                  '\nConfirmed territory: '
+                  '${selectedSiteValidationResult!.candidate.confirmedTerritory!.displayLabel}'
+                  '\nGeographically validated',
+                  key: const ValueKey('selected-site-summary'),
+                ),
+              ),
+            ),
+          ],
+          const SizedBox(height: 20),
           const Text(
             'Location and Demand',
             style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
