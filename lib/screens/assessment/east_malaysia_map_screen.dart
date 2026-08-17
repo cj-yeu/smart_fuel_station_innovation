@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../models/assessment_site_candidate.dart';
+import '../../models/east_malaysia_site_validation_result.dart';
 import '../../models/geo_point.dart';
+import '../../services/east_malaysia_geography_repository.dart';
 
 typedef EastMalaysiaMapContentBuilder =
     Widget Function(
@@ -11,6 +14,11 @@ typedef EastMalaysiaMapContentBuilder =
       AssessmentSiteCandidate? candidate,
       ValueChanged<GeoPoint> onPointSelected,
     );
+typedef EastMalaysiaSiteValidator =
+    Future<EastMalaysiaSiteValidationResult> Function({
+      required GeoPoint point,
+      required double analysisRadiusKm,
+    });
 
 class EastMalaysiaMapScreen extends StatefulWidget {
   static const tileUrlTemplate =
@@ -18,25 +26,16 @@ class EastMalaysiaMapScreen extends StatefulWidget {
   static const tileUserAgentPackageName =
       'com.example.smart_fuell_station_innovation';
 
-  final AssessmentSiteCandidate? initialCandidate;
+  final EastMalaysiaSiteValidationResult? initialValidationResult;
   final EastMalaysiaMapContentBuilder? mapContentBuilder;
+  final EastMalaysiaSiteValidator? validator;
 
-  EastMalaysiaMapScreen({
+  const EastMalaysiaMapScreen({
     super.key,
-    this.initialCandidate,
+    this.initialValidationResult,
     this.mapContentBuilder,
-  }) {
-    final candidate = initialCandidate;
-    if (candidate != null &&
-        (candidate.validationStatus != GeographicValidationStatus.unverified ||
-            candidate.confirmedTerritory != null)) {
-      throw ArgumentError.value(
-        candidate,
-        'initialCandidate',
-        'The initial map candidate must be unverified without a territory.',
-      );
-    }
-  }
+    this.validator,
+  });
 
   @visibleForTesting
   static List<Widget> buildSelectionLayers(AssessmentSiteCandidate? candidate) {
@@ -84,10 +83,26 @@ class EastMalaysiaMapScreen extends StatefulWidget {
 }
 
 class _EastMalaysiaMapScreenState extends State<EastMalaysiaMapScreen> {
-  late GeoPoint? selectedPoint = widget.initialCandidate?.point;
-  late double selectedRadiusKm = widget.initialCandidate?.analysisRadiusKm ?? 5;
+  late GeoPoint? selectedPoint =
+      widget.initialValidationResult?.candidate.point;
+  late double selectedRadiusKm =
+      widget.initialValidationResult?.candidate.analysisRadiusKm ?? 5;
+  late EastMalaysiaSiteValidationResult? validationResult =
+      widget.initialValidationResult;
+  EastMalaysiaSiteValidator? _productionValidator;
+  bool isValidating = false;
+  String? validationError;
+
+  EastMalaysiaSiteValidator get validator =>
+      widget.validator ??
+      (_productionValidator ??= EastMalaysiaGeographyRepository(
+        Supabase.instance.client,
+      ).validateSite);
 
   AssessmentSiteCandidate? get candidate {
+    final validatedCandidate = validationResult?.candidate;
+    if (validatedCandidate != null) return validatedCandidate;
+
     final point = selectedPoint;
     if (point == null) return null;
 
@@ -99,15 +114,80 @@ class _EastMalaysiaMapScreenState extends State<EastMalaysiaMapScreen> {
   }
 
   void selectPoint(GeoPoint point) {
+    if (isValidating) return;
     setState(() {
       selectedPoint = point;
+      validationResult = null;
+      validationError = null;
     });
   }
 
   void changeRadius(double radiusKm) {
+    if (isValidating) return;
     setState(() {
       selectedRadiusKm = radiusKm;
+      validationResult = null;
+      validationError = null;
     });
+  }
+
+  Future<void> validateCandidate() async {
+    if (isValidating) return;
+    final currentCandidate = candidate;
+    if (currentCandidate == null) return;
+
+    setState(() {
+      isValidating = true;
+      validationError = null;
+    });
+
+    try {
+      final result = await validator(
+        point: currentCandidate.point,
+        analysisRadiusKm: currentCandidate.analysisRadiusKm,
+      );
+      if (!mounted) return;
+      setState(() {
+        validationResult = result;
+        selectedPoint = result.candidate.point;
+        selectedRadiusKm = result.candidate.analysisRadiusKm;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        validationError = 'Unable to validate this site. Please try again.';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          isValidating = false;
+        });
+      }
+    }
+  }
+
+  String get validationStatusText {
+    final result = validationResult;
+    if (result == null) return 'Not yet geographically validated';
+
+    return switch (result.candidate.validationStatus) {
+      GeographicValidationStatus.inside =>
+        'Confirmed in ${result.candidate.confirmedTerritory!.displayLabel}',
+      GeographicValidationStatus.outside =>
+        'Outside the supported East Malaysia territories',
+      GeographicValidationStatus.unverified =>
+        'Unable to verify yet because authoritative boundary data is '
+            'unavailable',
+      GeographicValidationStatus.boundaryReviewRequired =>
+        'Boundary review required',
+    };
+  }
+
+  Color get validationStatusColor {
+    return validationResult?.candidate.validationStatus ==
+            GeographicValidationStatus.inside
+        ? const Color(0xFF1B5E20)
+        : const Color(0xFFC62828);
   }
 
   @override
@@ -181,14 +261,21 @@ class _EastMalaysiaMapScreenState extends State<EastMalaysiaMapScreen> {
                     textAlign: TextAlign.center,
                   ),
                 const SizedBox(height: 6),
-                const Text(
-                  'Not yet geographically validated',
+                Text(
+                  validationStatusText,
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    color: Color(0xFFC62828),
+                    color: validationStatusColor,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
+                if (validationError != null)
+                  Text(
+                    validationError!,
+                    key: const ValueKey('validation-error-message'),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Color(0xFFC62828)),
+                  ),
                 const Text(
                   'The radius circle is analysis context, not proof of '
                   'territory eligibility.',
@@ -213,12 +300,22 @@ class _EastMalaysiaMapScreenState extends State<EastMalaysiaMapScreen> {
                               ),
                             )
                             .toList(growable: false),
-                        onChanged: (radius) {
-                          if (radius != null) changeRadius(radius);
-                        },
+                        onChanged: isValidating
+                            ? null
+                            : (radius) {
+                                if (radius != null) changeRadius(radius);
+                              },
                       ),
                     ),
                   ],
+                ),
+                const SizedBox(height: 8),
+                ElevatedButton(
+                  key: const ValueKey('validate-site-button'),
+                  onPressed: currentCandidate == null || isValidating
+                      ? null
+                      : validateCandidate,
+                  child: Text(isValidating ? 'Validating...' : 'Validate Site'),
                 ),
                 const SizedBox(height: 8),
                 Row(
@@ -233,9 +330,12 @@ class _EastMalaysiaMapScreenState extends State<EastMalaysiaMapScreen> {
                     Expanded(
                       child: ElevatedButton(
                         key: const ValueKey('use-candidate-button'),
-                        onPressed: currentCandidate == null
-                            ? null
-                            : () => Navigator.pop(context, currentCandidate),
+                        onPressed:
+                            !isValidating &&
+                                validationResult?.candidate.isValidatedInside ==
+                                    true
+                            ? () => Navigator.pop(context, validationResult)
+                            : null,
                         child: const Text('Use This Candidate'),
                       ),
                     ),

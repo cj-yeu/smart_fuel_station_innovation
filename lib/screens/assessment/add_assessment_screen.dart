@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../models/assessment_site_candidate.dart';
+import '../../models/east_malaysia_site_validation_result.dart';
 import '../../models/station_assessment.dart';
 import '../../models/station_assessment_create_input.dart';
 import '../../services/station_assessment_repository.dart';
@@ -14,7 +14,7 @@ typedef AssessmentCreator =
 typedef AssessmentMapScreenBuilder =
     Widget Function(
       BuildContext context,
-      AssessmentSiteCandidate? initialCandidate,
+      EastMalaysiaSiteValidationResult? initialValidationResult,
     );
 
 class AddAssessmentScreen extends StatefulWidget {
@@ -47,7 +47,7 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
   int landAccessibility = 3;
 
   bool isSaving = false;
-  AssessmentSiteCandidate? selectedSiteCandidate;
+  EastMalaysiaSiteValidationResult? selectedSiteValidationResult;
 
   @override
   void initState() {
@@ -167,18 +167,24 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
   }
 
   Future<void> selectSiteOnMap() async {
-    final selectedCandidate = await Navigator.push<AssessmentSiteCandidate>(
-      context,
-      MaterialPageRoute(
-        builder: (context) =>
-            widget.mapScreenBuilder?.call(context, selectedSiteCandidate) ??
-            EastMalaysiaMapScreen(initialCandidate: selectedSiteCandidate),
-      ),
-    );
+    final selectedResult =
+        await Navigator.push<EastMalaysiaSiteValidationResult>(
+          context,
+          MaterialPageRoute(
+            builder: (context) =>
+                widget.mapScreenBuilder?.call(
+                  context,
+                  selectedSiteValidationResult,
+                ) ??
+                EastMalaysiaMapScreen(
+                  initialValidationResult: selectedSiteValidationResult,
+                ),
+          ),
+        );
 
-    if (!mounted || selectedCandidate == null) return;
+    if (!mounted || selectedResult == null) return;
     setState(() {
-      selectedSiteCandidate = selectedCandidate;
+      selectedSiteValidationResult = selectedResult;
     });
   }
 
@@ -210,7 +216,8 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
             icon: const Icon(Icons.map_outlined),
             label: const Text('Select Site on Map'),
           ),
-          if (selectedSiteCandidate != null) ...[
+          if (selectedSiteValidationResult?.candidate.isValidatedInside ==
+              true) ...[
             const SizedBox(height: 12),
             DecoratedBox(
               decoration: const BoxDecoration(
@@ -220,12 +227,14 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
               child: Padding(
                 padding: const EdgeInsets.all(12),
                 child: Text(
-                  'Selected site: '
-                  '${selectedSiteCandidate!.point.latitude.toStringAsFixed(5)}, '
-                  '${selectedSiteCandidate!.point.longitude.toStringAsFixed(5)}'
+                  'Validated site: '
+                  '${selectedSiteValidationResult!.candidate.point.latitude.toStringAsFixed(5)}, '
+                  '${selectedSiteValidationResult!.candidate.point.longitude.toStringAsFixed(5)}'
                   '\nRadius: '
-                  '${selectedSiteCandidate!.analysisRadiusKm.toStringAsFixed(0)} km'
-                  '\nUnverified',
+                  '${selectedSiteValidationResult!.candidate.analysisRadiusKm.toStringAsFixed(0)} km'
+                  '\nConfirmed territory: '
+                  '${selectedSiteValidationResult!.candidate.confirmedTerritory!.displayLabel}'
+                  '\nGeographically validated',
                   key: const ValueKey('selected-site-summary'),
                 ),
               ),
