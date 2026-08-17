@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../models/assessment_site_candidate.dart';
 import '../../models/east_malaysia_site_validation_result.dart';
@@ -25,6 +26,10 @@ class EastMalaysiaMapScreen extends StatefulWidget {
       'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
   static const tileUserAgentPackageName =
       'com.example.smart_fuell_station_innovation';
+  static final osmCopyrightUri = Uri.parse(
+    'https://www.openstreetmap.org/copyright',
+  );
+  static const osmAttributionLaunchMode = LaunchMode.externalApplication;
 
   final EastMalaysiaSiteValidationResult? initialValidationResult;
   final EastMalaysiaMapContentBuilder? mapContentBuilder;
@@ -76,6 +81,17 @@ class EastMalaysiaMapScreen extends StatefulWidget {
         ],
       ),
     ];
+  }
+
+  @visibleForTesting
+  static SimpleAttributionWidget buildOsmAttribution() {
+    return SimpleAttributionWidget(
+      source: const Text('OpenStreetMap contributors'),
+      alignment: Alignment.bottomRight,
+      onTap: () async {
+        await launchUrl(osmCopyrightUri, mode: osmAttributionLaunchMode);
+      },
+    );
   }
 
   @override
@@ -396,10 +412,7 @@ class _ProductionEastMalaysiaMap extends StatelessWidget {
           userAgentPackageName: EastMalaysiaMapScreen.tileUserAgentPackageName,
         ),
         ...EastMalaysiaMapScreen.buildSelectionLayers(candidate),
-        const SimpleAttributionWidget(
-          source: Text('OpenStreetMap contributors'),
-          alignment: Alignment.bottomRight,
-        ),
+        EastMalaysiaMapScreen.buildOsmAttribution(),
       ],
     );
   }

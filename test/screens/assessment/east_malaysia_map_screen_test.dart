@@ -8,6 +8,7 @@ import 'package:smart_fuell_station_innovation/models/east_malaysia_site_validat
 import 'package:smart_fuell_station_innovation/models/east_malaysia_territory.dart';
 import 'package:smart_fuell_station_innovation/models/geo_point.dart';
 import 'package:smart_fuell_station_innovation/screens/assessment/east_malaysia_map_screen.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 void main() {
   final firstPoint = GeoPoint(latitude: 5.9804, longitude: 116.0735);
@@ -35,6 +36,23 @@ void main() {
     expect(find.text('Not yet geographically validated'), findsOneWidget);
     expect(find.byType(FlutterMap), findsNothing);
     expect(find.byType(TileLayer), findsNothing);
+  });
+
+  test('OSM attribution has the official external copyright link', () {
+    final attribution = EastMalaysiaMapScreen.buildOsmAttribution();
+    final source = attribution.source;
+
+    expect(source.data, 'OpenStreetMap contributors');
+    expect(attribution.onTap, isNotNull);
+    expect(
+      EastMalaysiaMapScreen.osmCopyrightUri.toString(),
+      'https://www.openstreetmap.org/copyright',
+    );
+    expect(
+      EastMalaysiaMapScreen.osmAttributionLaunchMode,
+      LaunchMode.externalApplication,
+    );
+    expect(attribution.alignment, Alignment.bottomRight);
   });
 
   testWidgets(
