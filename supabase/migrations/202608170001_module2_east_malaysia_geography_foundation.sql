@@ -1028,14 +1028,20 @@ begin
   if exists (
     select 1
     from pg_catalog.pg_attribute as attribute_entry
-    cross join lateral pg_catalog.aclexplode(
-      coalesce(attribute_entry.attacl, '{}'::aclitem[])
-    ) as column_acl
     where attribute_entry.attrelid = 'public.station_assessments'::regclass
       and attribute_entry.attnum > 0
       and not attribute_entry.attisdropped
-      and column_acl.grantee = 0
-      and column_acl.privilege_type = 'UPDATE'
+      and case
+        when attribute_entry.attacl is null then false
+        else exists (
+          select 1
+          from pg_catalog.aclexplode(
+            attribute_entry.attacl
+          ) as column_acl
+          where column_acl.grantee = 0
+            and column_acl.privilege_type = 'UPDATE'
+        )
+      end
   ) then
     raise exception
       'Module 2 geography foundation left PUBLIC assessment column UPDATE access';

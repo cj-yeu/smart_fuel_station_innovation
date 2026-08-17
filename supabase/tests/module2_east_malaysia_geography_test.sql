@@ -296,6 +296,40 @@ select pg_temp.assert_true(
 );
 
 select pg_temp.assert_true(
+  exists (
+    select 1
+    from pg_catalog.pg_attribute as attribute_entry
+    where attribute_entry.attrelid = 'public.station_assessments'::regclass
+      and attribute_entry.attnum > 0
+      and not attribute_entry.attisdropped
+      and attribute_entry.attacl is null
+  ),
+  'expected at least one NULL pg_attribute.attacl for station_assessments'
+);
+
+select pg_temp.assert_true(
+  not exists (
+    select 1
+    from pg_catalog.pg_attribute as attribute_entry
+    where attribute_entry.attrelid = 'public.station_assessments'::regclass
+      and attribute_entry.attnum > 0
+      and not attribute_entry.attisdropped
+      and case
+        when attribute_entry.attacl is null then false
+        else exists (
+          select 1
+          from pg_catalog.aclexplode(
+            attribute_entry.attacl
+          ) as column_acl
+          where column_acl.grantee = 0
+            and column_acl.privilege_type = 'UPDATE'
+        )
+      end
+  ),
+  'PUBLIC assessment column UPDATE must remain absent'
+);
+
+select pg_temp.assert_true(
   pg_catalog.has_function_privilege(
     'authenticated',
     'public.validate_east_malaysia_site(double precision,double precision,smallint)',
@@ -1203,18 +1237,26 @@ select pg_temp.assert_true(
   'same-company teammate assessment must remain readable'
 );
 
-select pg_temp.assert_true(
-  (
-    with changed as (
-      update public.station_assessments
-      set recommendation = 'Synthetic teammate must not update A1'
-      where location_name = 'Synthetic A1 own assessment'
-      returning 1
-    )
-    select count(*) = 0 from changed
-  ),
-  'normal users must not update another same-company assessment'
-);
+do $module2_rls_mutation$
+declare
+  affected_row_count bigint;
+begin
+  with changed as (
+    update public.station_assessments
+    set recommendation = 'Synthetic teammate must not update A1'
+    where location_name = 'Synthetic A1 own assessment'
+    returning 1
+  )
+  select pg_catalog.count(*)
+  into affected_row_count
+  from changed;
+
+  perform pg_temp.assert_true(
+    affected_row_count = 0,
+    'normal users must not update another same-company assessment'
+  );
+end;
+$module2_rls_mutation$;
 
 reset role;
 set local role authenticated;
@@ -1224,30 +1266,46 @@ select pg_catalog.set_config(
   true
 );
 
-select pg_temp.assert_true(
-  (
-    with changed as (
-      update public.station_assessments
-      set recommendation = 'Synthetic creator update succeeded'
-      where location_name = 'Synthetic A1 own assessment'
-      returning 1
-    )
-    select count(*) = 1 from changed
-  ),
-  'creator update authorization must remain intact'
-);
+do $module2_rls_mutation$
+declare
+  affected_row_count bigint;
+begin
+  with changed as (
+    update public.station_assessments
+    set recommendation = 'Synthetic creator update succeeded'
+    where location_name = 'Synthetic A1 own assessment'
+    returning 1
+  )
+  select pg_catalog.count(*)
+  into affected_row_count
+  from changed;
 
-select pg_temp.assert_true(
-  (
-    with removed as (
-      delete from public.station_assessments
-      where location_name = 'Synthetic A1 delete assessment'
-      returning 1
-    )
-    select count(*) = 1 from removed
-  ),
-  'creator delete authorization must remain intact'
-);
+  perform pg_temp.assert_true(
+    affected_row_count = 1,
+    'creator update authorization must remain intact'
+  );
+end;
+$module2_rls_mutation$;
+
+do $module2_rls_mutation$
+declare
+  affected_row_count bigint;
+begin
+  with removed as (
+    delete from public.station_assessments
+    where location_name = 'Synthetic A1 delete assessment'
+    returning 1
+  )
+  select pg_catalog.count(*)
+  into affected_row_count
+  from removed;
+
+  perform pg_temp.assert_true(
+    affected_row_count = 1,
+    'creator delete authorization must remain intact'
+  );
+end;
+$module2_rls_mutation$;
 
 reset role;
 set local role authenticated;
@@ -1257,30 +1315,46 @@ select pg_catalog.set_config(
   true
 );
 
-select pg_temp.assert_true(
-  (
-    with changed as (
-      update public.station_assessments
-      set recommendation = 'Synthetic admin update succeeded'
-      where location_name = 'Synthetic A2 teammate assessment'
-      returning 1
-    )
-    select count(*) = 1 from changed
-  ),
-  'company-admin teammate update authorization must remain intact'
-);
+do $module2_rls_mutation$
+declare
+  affected_row_count bigint;
+begin
+  with changed as (
+    update public.station_assessments
+    set recommendation = 'Synthetic admin update succeeded'
+    where location_name = 'Synthetic A2 teammate assessment'
+    returning 1
+  )
+  select pg_catalog.count(*)
+  into affected_row_count
+  from changed;
 
-select pg_temp.assert_true(
-  (
-    with removed as (
-      delete from public.station_assessments
-      where location_name = 'Synthetic A2 admin delete assessment'
-      returning 1
-    )
-    select count(*) = 1 from removed
-  ),
-  'company-admin teammate delete authorization must remain intact'
-);
+  perform pg_temp.assert_true(
+    affected_row_count = 1,
+    'company-admin teammate update authorization must remain intact'
+  );
+end;
+$module2_rls_mutation$;
+
+do $module2_rls_mutation$
+declare
+  affected_row_count bigint;
+begin
+  with removed as (
+    delete from public.station_assessments
+    where location_name = 'Synthetic A2 admin delete assessment'
+    returning 1
+  )
+  select pg_catalog.count(*)
+  into affected_row_count
+  from removed;
+
+  perform pg_temp.assert_true(
+    affected_row_count = 1,
+    'company-admin teammate delete authorization must remain intact'
+  );
+end;
+$module2_rls_mutation$;
 
 reset role;
 set local role authenticated;
@@ -1312,30 +1386,46 @@ select pg_catalog.set_config(
   true
 );
 
-select pg_temp.assert_true(
-  (
-    with changed as (
-      update public.station_assessments
-      set recommendation = 'Synthetic cross-company admin attempt'
-      where location_name = 'Synthetic B protected assessment'
-      returning 1
-    )
-    select count(*) = 0 from changed
-  ),
-  'company admin must not update a cross-company assessment'
-);
+do $module2_rls_mutation$
+declare
+  affected_row_count bigint;
+begin
+  with changed as (
+    update public.station_assessments
+    set recommendation = 'Synthetic cross-company admin attempt'
+    where location_name = 'Synthetic B protected assessment'
+    returning 1
+  )
+  select pg_catalog.count(*)
+  into affected_row_count
+  from changed;
 
-select pg_temp.assert_true(
-  (
-    with removed as (
-      delete from public.station_assessments
-      where location_name = 'Synthetic B protected assessment'
-      returning 1
-    )
-    select count(*) = 0 from removed
-  ),
-  'company admin must not delete a cross-company assessment'
-);
+  perform pg_temp.assert_true(
+    affected_row_count = 0,
+    'company admin must not update a cross-company assessment'
+  );
+end;
+$module2_rls_mutation$;
+
+do $module2_rls_mutation$
+declare
+  affected_row_count bigint;
+begin
+  with removed as (
+    delete from public.station_assessments
+    where location_name = 'Synthetic B protected assessment'
+    returning 1
+  )
+  select pg_catalog.count(*)
+  into affected_row_count
+  from removed;
+
+  perform pg_temp.assert_true(
+    affected_row_count = 0,
+    'company admin must not delete a cross-company assessment'
+  );
+end;
+$module2_rls_mutation$;
 
 reset role;
 set local role authenticated;
