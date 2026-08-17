@@ -467,54 +467,86 @@ select pg_temp.assert_true(
 );
 
 -- A normal user updates their own row but not another same-company row.
-select pg_temp.assert_true(
-  (
-    with changed as (
-      update public.station_assessments
-      set recommendation = 'A1 updated own row'
-      where location_name = 'A1 shared read and update'
-      returning 1
-    )
-    select count(*) = 1 from changed
-  ),
-  'normal users must update their own assessments'
-);
-select pg_temp.assert_true(
-  (
-    with changed as (
-      update public.station_assessments
-      set recommendation = 'A1 must not update A2'
-      where location_name = 'A2 shared admin target'
-      returning 1
-    )
-    select count(*) = 0 from changed
-  ),
-  'normal users must not update another same-company assessment'
-);
+do $module2_rls_mutation$
+declare
+  affected_row_count bigint;
+begin
+  with changed as (
+    update public.station_assessments
+    set recommendation = 'A1 updated own row'
+    where location_name = 'A1 shared read and update'
+    returning 1
+  )
+  select pg_catalog.count(*)
+  into affected_row_count
+  from changed;
+
+  perform pg_temp.assert_true(
+    affected_row_count = 1,
+    'normal users must update their own assessments'
+  );
+end;
+$module2_rls_mutation$;
+do $module2_rls_mutation$
+declare
+  affected_row_count bigint;
+begin
+  with changed as (
+    update public.station_assessments
+    set recommendation = 'A1 must not update A2'
+    where location_name = 'A2 shared admin target'
+    returning 1
+  )
+  select pg_catalog.count(*)
+  into affected_row_count
+  from changed;
+
+  perform pg_temp.assert_true(
+    affected_row_count = 0,
+    'normal users must not update another same-company assessment'
+  );
+end;
+$module2_rls_mutation$;
 
 -- A normal user deletes their own row but not another same-company row.
-select pg_temp.assert_true(
-  (
-    with removed as (
-      delete from public.station_assessments
-      where location_name = 'A1 delete own'
-      returning 1
-    )
-    select count(*) = 1 from removed
-  ),
-  'normal users must delete their own assessments'
-);
-select pg_temp.assert_true(
-  (
-    with removed as (
-      delete from public.station_assessments
-      where location_name = 'A2 delete admin target'
-      returning 1
-    )
-    select count(*) = 0 from removed
-  ),
-  'normal users must not delete another same-company assessment'
-);
+do $module2_rls_mutation$
+declare
+  affected_row_count bigint;
+begin
+  with removed as (
+    delete from public.station_assessments
+    where location_name = 'A1 delete own'
+    returning 1
+  )
+  select pg_catalog.count(*)
+  into affected_row_count
+  from removed;
+
+  perform pg_temp.assert_true(
+    affected_row_count = 1,
+    'normal users must delete their own assessments'
+  );
+end;
+$module2_rls_mutation$;
+do $module2_rls_mutation$
+declare
+  affected_row_count bigint;
+begin
+  with removed as (
+    delete from public.station_assessments
+    where location_name = 'A2 delete admin target'
+    returning 1
+  )
+  select pg_catalog.count(*)
+  into affected_row_count
+  from removed;
+
+  perform pg_temp.assert_true(
+    affected_row_count = 0,
+    'normal users must not delete another same-company assessment'
+  );
+end;
+$module2_rls_mutation$;
 
 -- Supplying another creator cannot create transferred ownership. This conflict
 -- reaches and is rejected by the ownership trigger.
@@ -668,52 +700,84 @@ select pg_catalog.set_config(
   '20000000-0000-0000-0000-000000000103',
   true
 );
-select pg_temp.assert_true(
-  (
-    with changed as (
-      update public.station_assessments
-      set recommendation = 'Admin A updated A2 row'
-      where location_name = 'A2 shared admin target'
-      returning 1
-    )
-    select count(*) = 1 from changed
-  ),
-  'company admins must update another user''s same-company assessment'
-);
-select pg_temp.assert_true(
-  (
-    with changed as (
-      update public.station_assessments
-      set recommendation = 'Admin A must not update B'
-      where location_name = 'B user protected row'
-      returning 1
-    )
-    select count(*) = 0 from changed
-  ),
-  'company admins must not update another company''s assessment'
-);
-select pg_temp.assert_true(
-  (
-    with removed as (
-      delete from public.station_assessments
-      where location_name = 'A2 delete admin target'
-      returning 1
-    )
-    select count(*) = 1 from removed
-  ),
-  'company admins must delete another user''s same-company assessment'
-);
-select pg_temp.assert_true(
-  (
-    with removed as (
-      delete from public.station_assessments
-      where location_name = 'B delete protected row'
-      returning 1
-    )
-    select count(*) = 0 from removed
-  ),
-  'company admins must not delete another company''s assessment'
-);
+do $module2_rls_mutation$
+declare
+  affected_row_count bigint;
+begin
+  with changed as (
+    update public.station_assessments
+    set recommendation = 'Admin A updated A2 row'
+    where location_name = 'A2 shared admin target'
+    returning 1
+  )
+  select pg_catalog.count(*)
+  into affected_row_count
+  from changed;
+
+  perform pg_temp.assert_true(
+    affected_row_count = 1,
+    'company admins must update another user''s same-company assessment'
+  );
+end;
+$module2_rls_mutation$;
+do $module2_rls_mutation$
+declare
+  affected_row_count bigint;
+begin
+  with changed as (
+    update public.station_assessments
+    set recommendation = 'Admin A must not update B'
+    where location_name = 'B user protected row'
+    returning 1
+  )
+  select pg_catalog.count(*)
+  into affected_row_count
+  from changed;
+
+  perform pg_temp.assert_true(
+    affected_row_count = 0,
+    'company admins must not update another company''s assessment'
+  );
+end;
+$module2_rls_mutation$;
+do $module2_rls_mutation$
+declare
+  affected_row_count bigint;
+begin
+  with removed as (
+    delete from public.station_assessments
+    where location_name = 'A2 delete admin target'
+    returning 1
+  )
+  select pg_catalog.count(*)
+  into affected_row_count
+  from removed;
+
+  perform pg_temp.assert_true(
+    affected_row_count = 1,
+    'company admins must delete another user''s same-company assessment'
+  );
+end;
+$module2_rls_mutation$;
+do $module2_rls_mutation$
+declare
+  affected_row_count bigint;
+begin
+  with removed as (
+    delete from public.station_assessments
+    where location_name = 'B delete protected row'
+    returning 1
+  )
+  select pg_catalog.count(*)
+  into affected_row_count
+  from removed;
+
+  perform pg_temp.assert_true(
+    affected_row_count = 0,
+    'company admins must not delete another company''s assessment'
+  );
+end;
+$module2_rls_mutation$;
 
 do $$
 begin
@@ -782,34 +846,50 @@ exception
 end;
 $$;
 
-select pg_temp.assert_true(
-  (
-    with changed as (
-      update public.station_assessments
-      set recommendation = 'No-company user must not update'
-      where id = pg_catalog.current_setting(
-        'module2_test.no_company_target_id'
-      )::uuid
-      returning 1
-    )
-    select count(*) = 0 from changed
-  ),
-  'users without company membership must not update assessments'
-);
+do $module2_rls_mutation$
+declare
+  affected_row_count bigint;
+begin
+  with changed as (
+    update public.station_assessments
+    set recommendation = 'No-company user must not update'
+    where id = pg_catalog.current_setting(
+      'module2_test.no_company_target_id'
+    )::uuid
+    returning 1
+  )
+  select pg_catalog.count(*)
+  into affected_row_count
+  from changed;
 
-select pg_temp.assert_true(
-  (
-    with removed as (
-      delete from public.station_assessments
-      where id = pg_catalog.current_setting(
-        'module2_test.no_company_target_id'
-      )::uuid
-      returning 1
-    )
-    select count(*) = 0 from removed
-  ),
-  'users without company membership must not delete assessments'
-);
+  perform pg_temp.assert_true(
+    affected_row_count = 0,
+    'users without company membership must not update assessments'
+  );
+end;
+$module2_rls_mutation$;
+
+do $module2_rls_mutation$
+declare
+  affected_row_count bigint;
+begin
+  with removed as (
+    delete from public.station_assessments
+    where id = pg_catalog.current_setting(
+      'module2_test.no_company_target_id'
+    )::uuid
+    returning 1
+  )
+  select pg_catalog.count(*)
+  into affected_row_count
+  from removed;
+
+  perform pg_temp.assert_true(
+    affected_row_count = 0,
+    'users without company membership must not delete assessments'
+  );
+end;
+$module2_rls_mutation$;
 
 reset role;
 
