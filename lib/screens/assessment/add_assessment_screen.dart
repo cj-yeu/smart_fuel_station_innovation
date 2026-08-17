@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../models/assessment_site_candidate.dart';
 import '../../models/station_assessment.dart';
 import '../../models/station_assessment_create_input.dart';
 import '../../services/station_assessment_repository.dart';
@@ -10,10 +11,15 @@ import 'east_malaysia_map_screen.dart';
 
 typedef AssessmentCreator =
     Future<StationAssessment> Function(StationAssessmentCreateInput input);
+typedef AssessmentMapScreenBuilder =
+    Widget Function(
+      BuildContext context,
+      AssessmentSiteCandidate? initialCandidate,
+    );
 
 class AddAssessmentScreen extends StatefulWidget {
   final AssessmentCreator? assessmentCreator;
-  final WidgetBuilder? mapScreenBuilder;
+  final AssessmentMapScreenBuilder? mapScreenBuilder;
 
   const AddAssessmentScreen({
     super.key,
@@ -41,6 +47,7 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
   int landAccessibility = 3;
 
   bool isSaving = false;
+  AssessmentSiteCandidate? selectedSiteCandidate;
 
   @override
   void initState() {
@@ -159,6 +166,22 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
     );
   }
 
+  Future<void> selectSiteOnMap() async {
+    final selectedCandidate = await Navigator.push<AssessmentSiteCandidate>(
+      context,
+      MaterialPageRoute(
+        builder: (context) =>
+            widget.mapScreenBuilder?.call(context, selectedSiteCandidate) ??
+            EastMalaysiaMapScreen(initialCandidate: selectedSiteCandidate),
+      ),
+    );
+
+    if (!mounted || selectedCandidate == null) return;
+    setState(() {
+      selectedSiteCandidate = selectedCandidate;
+    });
+  }
+
   @override
   void dispose() {
     locationController.dispose();
@@ -183,19 +206,31 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
         children: [
           OutlinedButton.icon(
             key: const ValueKey('view-east-malaysia-map-button'),
-            onPressed: () {
-              Navigator.push<void>(
-                context,
-                MaterialPageRoute(
-                  builder:
-                      widget.mapScreenBuilder ??
-                      (context) => const EastMalaysiaMapScreen(),
-                ),
-              );
-            },
+            onPressed: selectSiteOnMap,
             icon: const Icon(Icons.map_outlined),
-            label: const Text('View East Malaysia Map'),
+            label: const Text('Select Site on Map'),
           ),
+          if (selectedSiteCandidate != null) ...[
+            const SizedBox(height: 12),
+            DecoratedBox(
+              decoration: const BoxDecoration(
+                color: Color(0xFFE7F3EC),
+                borderRadius: BorderRadius.all(Radius.circular(12)),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Text(
+                  'Selected site: '
+                  '${selectedSiteCandidate!.point.latitude.toStringAsFixed(5)}, '
+                  '${selectedSiteCandidate!.point.longitude.toStringAsFixed(5)}'
+                  '\nRadius: '
+                  '${selectedSiteCandidate!.analysisRadiusKm.toStringAsFixed(0)} km'
+                  '\nUnverified',
+                  key: const ValueKey('selected-site-summary'),
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: 20),
           const Text(
             'Location and Demand',

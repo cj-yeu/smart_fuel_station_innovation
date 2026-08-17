@@ -2,30 +2,58 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:smart_fuell_station_innovation/models/assessment_site_candidate.dart';
+import 'package:smart_fuell_station_innovation/models/geo_point.dart';
 import 'package:smart_fuell_station_innovation/models/station_assessment.dart';
 import 'package:smart_fuell_station_innovation/models/station_assessment_create_input.dart';
 import 'package:smart_fuell_station_innovation/screens/assessment/add_assessment_screen.dart';
 import 'package:smart_fuell_station_innovation/services/station_assessment_service.dart';
 
 void main() {
-  testWidgets('map route preserves entered form values when returning', (
+  testWidgets('map selection can be restored, cancelled, and replaced', (
     tester,
   ) async {
+    final firstCandidate = AssessmentSiteCandidate(
+      point: GeoPoint(latitude: 5.9804, longitude: 116.0735),
+      analysisRadiusKm: 5,
+      validationStatus: GeographicValidationStatus.unverified,
+    );
+    final replacementCandidate = AssessmentSiteCandidate(
+      point: GeoPoint(latitude: 1.5533, longitude: 110.3592),
+      analysisRadiusKm: 10,
+      validationStatus: GeographicValidationStatus.unverified,
+    );
+    final receivedInitialCandidates = <AssessmentSiteCandidate?>[];
+
     await pumpAddAssessment(
       tester,
       creator: (_) async => persistedAssessment,
-      mapScreenBuilder: (context) => Scaffold(
-        appBar: AppBar(title: const Text('Injected map screen')),
-        body: Center(
-          child: ElevatedButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Return from map'),
+      mapScreenBuilder: (context, initialCandidate) {
+        receivedInitialCandidates.add(initialCandidate);
+        return Scaffold(
+          appBar: AppBar(title: const Text('Injected map screen')),
+          body: Column(
+            children: [
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel map'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(
+                  context,
+                  receivedInitialCandidates.length == 1
+                      ? firstCandidate
+                      : replacementCandidate,
+                ),
+                child: const Text('Return candidate'),
+              ),
+            ],
           ),
-        ),
-      ),
+        );
+      },
     );
 
-    final mapButton = find.text('View East Malaysia Map');
+    final mapButton = find.text('Select Site on Map');
     final formHeading = find.text('Location and Demand');
     expect(mapButton, findsOneWidget);
     expect(formHeading, findsOneWidget);
@@ -41,11 +69,34 @@ void main() {
     await tester.tap(mapButton);
     await tester.pumpAndSettle();
     expect(find.text('Injected map screen'), findsOneWidget);
+    expect(receivedInitialCandidates, <AssessmentSiteCandidate?>[null]);
 
-    await tester.tap(find.text('Return from map'));
+    await tester.tap(find.text('Return candidate'));
     await tester.pumpAndSettle();
 
-    expect(find.text('New Assessment'), findsOneWidget);
+    expect(find.textContaining('5.98040'), findsOneWidget);
+    expect(find.textContaining('116.07350'), findsOneWidget);
+    expect(find.textContaining('Radius: 5 km'), findsOneWidget);
+    expect(find.textContaining('Unverified'), findsOneWidget);
+
+    await tester.tap(mapButton);
+    await tester.pumpAndSettle();
+    expect(receivedInitialCandidates.last, firstCandidate);
+    await tester.tap(find.text('Cancel map'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('5.98040'), findsOneWidget);
+    expect(find.textContaining('Radius: 5 km'), findsOneWidget);
+
+    await tester.tap(mapButton);
+    await tester.pumpAndSettle();
+    expect(receivedInitialCandidates.last, firstCandidate);
+    await tester.tap(find.text('Return candidate'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('1.55330'), findsOneWidget);
+    expect(find.textContaining('110.35920'), findsOneWidget);
+    expect(find.textContaining('Radius: 10 km'), findsOneWidget);
     expect(find.text('Kuching candidate'), findsOneWidget);
     expect(find.text('2468.5'), findsOneWidget);
   });
@@ -223,7 +274,7 @@ void main() {
 Future<void> pumpAddAssessment(
   WidgetTester tester, {
   required AssessmentCreator creator,
-  WidgetBuilder? mapScreenBuilder,
+  AssessmentMapScreenBuilder? mapScreenBuilder,
 }) {
   return tester.pumpWidget(
     MaterialApp(
