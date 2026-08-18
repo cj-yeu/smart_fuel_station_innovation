@@ -56,6 +56,62 @@ void main() {
   });
 
   testWidgets(
+    'boundary attribution exposes project and licence links without network',
+    (tester) async {
+      final launches = <({Uri uri, LaunchMode mode})>[];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Stack(
+              children: [
+                EastMalaysiaMapScreen.buildBoundaryAttribution(
+                  launcher: (uri, {mode = LaunchMode.platformDefault}) async {
+                    launches.add((uri: uri, mode: mode));
+                    return true;
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('Boundary validation: '), findsOneWidget);
+      expect(find.text('geoBoundaries'), findsOneWidget);
+      expect(find.text('CC BY 4.0'), findsOneWidget);
+      expect(
+        tester
+            .widget<Align>(
+              find.byKey(const ValueKey('boundary-data-attribution')),
+            )
+            .alignment,
+        Alignment.bottomRight,
+      );
+
+      await tester.tap(
+        find.byKey(const ValueKey('geoboundaries-attribution-link')),
+      );
+      await tester.pump();
+      await tester.tap(
+        find.byKey(const ValueKey('cc-by-four-attribution-link')),
+      );
+      await tester.pump();
+
+      expect(launches, [
+        (
+          uri: EastMalaysiaMapScreen.geoBoundariesProjectUri,
+          mode: LaunchMode.externalApplication,
+        ),
+        (
+          uri: EastMalaysiaMapScreen.ccByFourLicenceUri,
+          mode: LaunchMode.externalApplication,
+        ),
+      ]);
+    },
+  );
+
+  testWidgets(
     'pending validation sends exact input once and locks interaction',
     (tester) async {
       final completer = Completer<EastMalaysiaSiteValidationResult>();
