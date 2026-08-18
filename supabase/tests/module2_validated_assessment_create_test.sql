@@ -380,14 +380,20 @@ select pg_temp.assert_true(
   'RPC signature must not expose ownership or authoritative geography parameters'
 );
 
-insert into public.fuel_companies (id, name)
+insert into public.fuel_companies (
+  id,
+  company_code,
+  company_name
+)
 values
   (
     '51000000-0000-0000-0000-000000000001',
+    'MODULE2_VALIDATED_CREATE_A',
     'Module 2 Validated Create Company One'
   ),
   (
     '51000000-0000-0000-0000-000000000002',
+    'MODULE2_VALIDATED_CREATE_B',
     'Module 2 Validated Create Company Two'
   );
 
