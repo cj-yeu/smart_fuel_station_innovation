@@ -1,7 +1,16 @@
+// ignore_for_file: prefer_initializing_formals
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/station_assessment.dart';
 import '../models/station_assessment_create_input.dart';
+import '../models/station_assessment_validated_create_input.dart';
+
+typedef ValidatedAssessmentRpcCaller =
+    Future<dynamic> Function(String functionName, Map<String, dynamic> params);
+typedef AssessmentRowsByIdLoader =
+    Future<List<Map<String, dynamic>>> Function(String assessmentId);
+typedef AuthenticatedUserIdProvider = String? Function();
 
 class AssessmentDeleteRejectedException implements Exception {
   const AssessmentDeleteRejectedException();
@@ -19,8 +28,19 @@ class AssessmentUpdateRejectedException implements Exception {
 
 class StationAssessmentRepository {
   final SupabaseClient _client;
+  final ValidatedAssessmentRpcCaller? _validatedAssessmentRpcCaller;
+  final AssessmentRowsByIdLoader? _assessmentRowsByIdLoader;
+  final AuthenticatedUserIdProvider? _authenticatedUserIdProvider;
 
-  const StationAssessmentRepository(this._client);
+  const StationAssessmentRepository(
+    this._client, {
+    // Named public seams keep repository tests network-free without mocks.
+    ValidatedAssessmentRpcCaller? validatedAssessmentRpcCaller,
+    AssessmentRowsByIdLoader? assessmentRowsByIdLoader,
+    AuthenticatedUserIdProvider? authenticatedUserIdProvider,
+  }) : _validatedAssessmentRpcCaller = validatedAssessmentRpcCaller,
+       _assessmentRowsByIdLoader = assessmentRowsByIdLoader,
+       _authenticatedUserIdProvider = authenticatedUserIdProvider;
 
   /// Fetches the current company's RLS-visible assessments, newest first.
   ///
@@ -64,6 +84,74 @@ class StationAssessmentRepository {
 
     return StationAssessment.fromMap(data);
   }
+
+  /// Creates an assessment whose geography is revalidated and persisted by
+  /// PostgreSQL in the same transaction.
+  ///
+  /// Only the 14 content values, candidate coordinates/radius, and expected
+  /// boundary dataset UUID are sent. Ownership, territory, status, provenance,
+  /// and validation time are authoritative RPC outputs and never client input.
+  Future<StationAssessment> createValidatedAssessment(
+    StationAssessmentValidatedCreateInput input,
+  ) async {
+    final expectedUserId =
+        _authenticatedUserIdProvider?.call() ??
+        _client.auth.currentSession?.user.id;
+    if (expectedUserId == null || expectedUserId.trim().isEmpty) {
+      throw StateError('An authenticated session is required.');
+    }
+
+    final response =
+        await (_validatedAssessmentRpcCaller?.call(
+              'create_validated_station_assessment',
+              input.toRpcParams(),
+            ) ??
+            _client.rpc(
+              'create_validated_station_assessment',
+              params: input.toRpcParams(),
+            ));
+
+    if (response is! String || !_uuidPattern.hasMatch(response)) {
+      throw StateError(
+        'Validated assessment creation must return exactly one UUID.',
+      );
+    }
+
+    final rows =
+        await (_assessmentRowsByIdLoader?.call(response) ??
+            _loadAssessmentRowsById(response));
+    if (rows.length != 1) {
+      throw StateError(
+        'Validated assessment lookup must return exactly one row.',
+      );
+    }
+
+    final assessment = StationAssessment.fromMap(rows.single);
+    if (assessment.id != response || assessment.userId != expectedUserId) {
+      throw StateError(
+        'Validated assessment response did not match the authenticated creator.',
+      );
+    }
+    return assessment;
+  }
+
+  Future<List<Map<String, dynamic>>> _loadAssessmentRowsById(
+    String assessmentId,
+  ) async {
+    final rows = await _client
+        .from('station_assessments')
+        .select()
+        .eq('id', assessmentId)
+        .limit(2);
+    return rows
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList(growable: false);
+  }
+
+  static final RegExp _uuidPattern = RegExp(
+    r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+    caseSensitive: false,
+  );
 
   /// Updates one RLS-authorized assessment by primary key and returns its row.
   ///

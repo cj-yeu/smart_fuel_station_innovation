@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../models/east_malaysia_site_validation_result.dart';
 import '../../models/station_assessment.dart';
 import '../../models/station_assessment_create_input.dart';
+import '../../models/station_assessment_validated_create_input.dart';
 import '../../services/station_assessment_repository.dart';
 import '../../services/station_assessment_service.dart';
 import 'assessment_result_screen.dart';
@@ -11,6 +12,10 @@ import 'east_malaysia_map_screen.dart';
 
 typedef AssessmentCreator =
     Future<StationAssessment> Function(StationAssessmentCreateInput input);
+typedef ValidatedAssessmentCreator =
+    Future<StationAssessment> Function(
+      StationAssessmentValidatedCreateInput input,
+    );
 typedef AssessmentMapScreenBuilder =
     Widget Function(
       BuildContext context,
@@ -19,11 +24,13 @@ typedef AssessmentMapScreenBuilder =
 
 class AddAssessmentScreen extends StatefulWidget {
   final AssessmentCreator? assessmentCreator;
+  final ValidatedAssessmentCreator? validatedAssessmentCreator;
   final AssessmentMapScreenBuilder? mapScreenBuilder;
 
   const AddAssessmentScreen({
     super.key,
     this.assessmentCreator,
+    this.validatedAssessmentCreator,
     this.mapScreenBuilder,
   });
 
@@ -47,6 +54,8 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
   int landAccessibility = 3;
 
   bool isSaving = false;
+  bool requiresSiteRevalidation = false;
+  String? submissionErrorMessage;
   EastMalaysiaSiteValidationResult? selectedSiteValidationResult;
 
   @override
@@ -89,8 +98,17 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
       return;
     }
 
+    if (requiresSiteRevalidation && selectedSiteValidationResult == null) {
+      setState(() {
+        submissionErrorMessage =
+            'Please validate the selected site again before continuing.';
+      });
+      return;
+    }
+
     setState(() {
       isSaving = true;
+      submissionErrorMessage = null;
     });
 
     try {
@@ -123,7 +141,19 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
         explanation: result.explanation,
       );
 
-      await assessmentCreator(input);
+      final validationResult = selectedSiteValidationResult;
+      if (validationResult != null) {
+        final validatedInput = StationAssessmentValidatedCreateInput(
+          content: input,
+          validationResult: validationResult,
+        );
+        await (widget.validatedAssessmentCreator ??
+            StationAssessmentRepository(
+              Supabase.instance.client,
+            ).createValidatedAssessment)(validatedInput);
+      } else {
+        await assessmentCreator(input);
+      }
 
       if (!mounted) return;
 
@@ -141,6 +171,21 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
 
       if (completed == true) {
         Navigator.pop(context, true);
+      }
+    } on PostgrestException catch (error) {
+      if (!mounted) return;
+      if (error.code == '40001' && selectedSiteValidationResult != null) {
+        setState(() {
+          selectedSiteValidationResult = null;
+          requiresSiteRevalidation = true;
+          submissionErrorMessage =
+              'Please validate the selected site again before continuing.';
+        });
+      } else {
+        showMessage(
+          'Unable to complete assessment. Please try again.',
+          isError: true,
+        );
       }
     } catch (error) {
       if (!mounted) return;
@@ -185,6 +230,8 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
     if (!mounted || selectedResult == null) return;
     setState(() {
       selectedSiteValidationResult = selectedResult;
+      requiresSiteRevalidation = false;
+      submissionErrorMessage = null;
     });
   }
 
@@ -238,6 +285,14 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
                   key: const ValueKey('selected-site-summary'),
                 ),
               ),
+            ),
+          ],
+          if (submissionErrorMessage != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              submissionErrorMessage!,
+              key: const ValueKey('assessment-submit-error'),
+              style: const TextStyle(color: Colors.red),
             ),
           ],
           const SizedBox(height: 20),

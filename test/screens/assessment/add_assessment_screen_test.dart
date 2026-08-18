@@ -7,8 +7,10 @@ import 'package:smart_fuell_station_innovation/models/east_malaysia_territory.da
 import 'package:smart_fuell_station_innovation/models/geo_point.dart';
 import 'package:smart_fuell_station_innovation/models/station_assessment.dart';
 import 'package:smart_fuell_station_innovation/models/station_assessment_create_input.dart';
+import 'package:smart_fuell_station_innovation/models/station_assessment_validated_create_input.dart';
 import 'package:smart_fuell_station_innovation/screens/assessment/add_assessment_screen.dart';
 import 'package:smart_fuell_station_innovation/services/station_assessment_service.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() {
   testWidgets('validated site can be restored, cancelled, and replaced', (
@@ -65,18 +67,27 @@ void main() {
       lessThan(tester.getTopLeft(formHeading).dy),
     );
 
-    final fields = find.byType(TextField);
-    await tester.enterText(fields.at(0), 'Kuching candidate');
-    await tester.enterText(fields.at(1), '2468.5');
+    await enterAssessmentField(
+      tester,
+      label: 'Location Name',
+      hint: 'Example: Setapak, Kuala Lumpur',
+      value: 'Kuching candidate',
+    );
+    await enterAssessmentField(
+      tester,
+      label: 'Population Density',
+      hint: 'People per square kilometre',
+      value: '2468.5',
+    );
 
-    await tester.tap(mapButton);
-    await tester.pumpAndSettle();
+    await tapSelectSiteOnMap(tester);
     expect(find.text('Injected map screen'), findsOneWidget);
     expect(receivedInitialResults, <EastMalaysiaSiteValidationResult?>[null]);
 
     await tester.tap(find.text('Return candidate'));
     await tester.pumpAndSettle();
 
+    await scrollAssessmentFormToTop(tester);
     expect(find.textContaining('5.98040'), findsOneWidget);
     expect(find.textContaining('116.07350'), findsOneWidget);
     expect(find.textContaining('Radius: 5 km'), findsOneWidget);
@@ -84,27 +95,39 @@ void main() {
     expect(find.textContaining('Geographically validated'), findsOneWidget);
     expect(find.textContaining(firstDatasetId), findsNothing);
 
-    await tester.tap(mapButton);
-    await tester.pumpAndSettle();
+    await tapSelectSiteOnMap(tester);
     expect(receivedInitialResults.last, same(firstResult));
     await tester.tap(find.text('Cancel map'));
     await tester.pumpAndSettle();
 
+    await scrollAssessmentFormToTop(tester);
     expect(find.textContaining('5.98040'), findsOneWidget);
     expect(find.textContaining('Radius: 5 km'), findsOneWidget);
 
-    await tester.tap(mapButton);
-    await tester.pumpAndSettle();
+    await tapSelectSiteOnMap(tester);
     expect(receivedInitialResults.last, same(firstResult));
     await tester.tap(find.text('Return candidate'));
     await tester.pumpAndSettle();
 
+    await scrollAssessmentFormToTop(tester);
     expect(find.textContaining('1.55330'), findsOneWidget);
     expect(find.textContaining('110.35920'), findsOneWidget);
     expect(find.textContaining('Radius: 10 km'), findsOneWidget);
     expect(find.textContaining('Confirmed territory: Sarawak'), findsOneWidget);
     expect(find.textContaining(replacementDatasetId), findsNothing);
+    await expectAssessmentFieldValue(
+      tester,
+      label: 'Location Name',
+      hint: 'Example: Setapak, Kuala Lumpur',
+      value: 'Kuching candidate',
+    );
     expect(find.text('Kuching candidate'), findsOneWidget);
+    await expectAssessmentFieldValue(
+      tester,
+      label: 'Population Density',
+      hint: 'People per square kilometre',
+      value: '2468.5',
+    );
     expect(find.text('2468.5'), findsOneWidget);
   });
 
@@ -119,7 +142,7 @@ void main() {
       },
     );
 
-    await tapRunAssessment(tester);
+    await submitAssessment(tester);
 
     expect(createCount, 0);
     expect(find.text('Please fill in all fields'), findsOneWidget);
@@ -142,7 +165,7 @@ void main() {
     );
     await enterValidForm(tester);
 
-    await tapRunAssessment(tester);
+    await submitAssessment(tester);
 
     final expectedResult = StationAssessmentService.calculate(
       populationDensity: 1234.5,
@@ -179,6 +202,207 @@ void main() {
     expect(find.text('Kota Kinabalu'), findsOneWidget);
   });
 
+  testWidgets('validated selection uses only the validated creator', (
+    tester,
+  ) async {
+    var legacyCreateCount = 0;
+    var validatedCreateCount = 0;
+    StationAssessmentValidatedCreateInput? receivedInput;
+
+    await pumpAddAssessment(
+      tester,
+      creator: (_) async {
+        legacyCreateCount++;
+        return persistedAssessment;
+      },
+      validatedCreator: (input) async {
+        validatedCreateCount++;
+        receivedInput = input;
+        return persistedAssessment;
+      },
+      mapScreenBuilder: mapReturning(defaultInsideResult()),
+    );
+
+    await selectInjectedSite(tester);
+    await enterValidForm(tester);
+    await submitAssessment(tester);
+
+    expect(legacyCreateCount, 0);
+    expect(validatedCreateCount, 1);
+    expect(receivedInput!.validationResult.candidate.isValidatedInside, isTrue);
+    expect(receivedInput!.content.locationName, 'Kota Kinabalu');
+    expect(find.text('Assessment Result'), findsOneWidget);
+  });
+
+  testWidgets('stale validation clears selection but preserves form', (
+    tester,
+  ) async {
+    var validatedCreateCount = 0;
+    var legacyCreateCount = 0;
+
+    await pumpAddAssessment(
+      tester,
+      creator: (_) async {
+        legacyCreateCount++;
+        return persistedAssessment;
+      },
+      validatedCreator: (_) async {
+        validatedCreateCount++;
+        throw const PostgrestException(
+          message: 'Internal dataset replacement detail',
+          code: '40001',
+        );
+      },
+      mapScreenBuilder: mapReturning(defaultInsideResult()),
+    );
+
+    await selectInjectedSite(tester);
+    await enterValidForm(tester);
+    await submitAssessment(tester);
+
+    expect(validatedCreateCount, 1);
+    expect(legacyCreateCount, 0);
+    expect(find.textContaining('Internal dataset'), findsNothing);
+    expect(find.text('Assessment Result'), findsNothing);
+
+    await scrollAssessmentFormToTop(tester);
+    final staleError = find.byKey(const ValueKey('assessment-submit-error'));
+    expect(staleError, findsOneWidget);
+    expect(
+      tester.widget<Text>(staleError).data,
+      'Please validate the selected site again before continuing.',
+    );
+    expect(find.byKey(const ValueKey('selected-site-summary')), findsNothing);
+    await expectAssessmentFieldValue(
+      tester,
+      label: 'Location Name',
+      hint: 'Example: Setapak, Kuala Lumpur',
+      value: 'Kota Kinabalu',
+    );
+    expect(find.text('Kota Kinabalu'), findsOneWidget);
+    await expectAssessmentFieldValue(
+      tester,
+      label: 'Population Density',
+      hint: 'People per square kilometre',
+      value: '1234.5',
+    );
+    expect(find.text('1234.5'), findsOneWidget);
+    await expectAssessmentFieldValue(
+      tester,
+      label: 'Registered Vehicle Count',
+      hint: 'Estimated vehicles in the area',
+      value: '25000',
+    );
+    await expectAssessmentFieldValue(
+      tester,
+      label: 'Nearby Fuel Stations',
+      hint: 'Number of nearby competitors',
+      value: '2',
+    );
+    await expectAssessmentFieldValue(
+      tester,
+      label: 'Nearest Competitor Distance',
+      hint: 'Distance in kilometres',
+      value: '4.25',
+    );
+
+    await submitAssessment(tester);
+    await scrollAddAssessmentToTop(tester);
+    expect(validatedCreateCount, 1);
+    expect(legacyCreateCount, 0);
+    final retryError = find.byKey(const ValueKey('assessment-submit-error'));
+    expect(retryError, findsOneWidget);
+    expect(
+      tester.widget<Text>(retryError).data,
+      'Please validate the selected site again before continuing.',
+    );
+  });
+
+  testWidgets('non-stale validated failure preserves validation for retry', (
+    tester,
+  ) async {
+    var validatedCreateCount = 0;
+    var legacyCreateCount = 0;
+
+    await pumpAddAssessment(
+      tester,
+      creator: (_) async {
+        legacyCreateCount++;
+        return persistedAssessment;
+      },
+      validatedCreator: (_) async {
+        validatedCreateCount++;
+        if (validatedCreateCount == 1) {
+          throw const PostgrestException(
+            message: 'Sensitive permission and ownership detail',
+            code: '42501',
+          );
+        }
+        return persistedAssessment;
+      },
+      mapScreenBuilder: mapReturning(defaultInsideResult()),
+    );
+
+    await selectInjectedSite(tester);
+    await enterValidForm(tester);
+    await submitAssessment(tester);
+
+    expect(validatedCreateCount, 1);
+    expect(legacyCreateCount, 0);
+    expect(
+      find.text('Unable to complete assessment. Please try again.'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Sensitive permission'), findsNothing);
+    expect(find.text('Assessment Result'), findsNothing);
+
+    await scrollAssessmentFormToTop(tester);
+    expect(find.byKey(const ValueKey('selected-site-summary')), findsOneWidget);
+    expect(find.textContaining('Confirmed territory: Sabah'), findsOneWidget);
+    expect(find.textContaining('Radius: 5 km'), findsOneWidget);
+    await expectAssessmentFieldValue(
+      tester,
+      label: 'Location Name',
+      hint: 'Example: Setapak, Kuala Lumpur',
+      value: 'Kota Kinabalu',
+    );
+    expect(find.text('Kota Kinabalu'), findsOneWidget);
+    await expectAssessmentFieldValue(
+      tester,
+      label: 'Population Density',
+      hint: 'People per square kilometre',
+      value: '1234.5',
+    );
+    expect(find.text('1234.5'), findsOneWidget);
+    await expectAssessmentFieldValue(
+      tester,
+      label: 'Registered Vehicle Count',
+      hint: 'Estimated vehicles in the area',
+      value: '25000',
+    );
+    expect(find.text('25000'), findsOneWidget);
+    await expectAssessmentFieldValue(
+      tester,
+      label: 'Nearby Fuel Stations',
+      hint: 'Number of nearby competitors',
+      value: '2',
+    );
+    expect(find.text('2'), findsOneWidget);
+    await expectAssessmentFieldValue(
+      tester,
+      label: 'Nearest Competitor Distance',
+      hint: 'Distance in kilometres',
+      value: '4.25',
+    );
+    expect(find.text('4.25'), findsOneWidget);
+
+    await submitAssessment(tester);
+
+    expect(validatedCreateCount, 2);
+    expect(legacyCreateCount, 0);
+    expect(find.text('Assessment Result'), findsOneWidget);
+  });
+
   testWidgets('pending creation disables repeated submission', (tester) async {
     var createCount = 0;
     final completer = Completer<StationAssessment>();
@@ -192,8 +416,7 @@ void main() {
     );
     await enterValidForm(tester);
 
-    await tester.tap(find.byKey(const ValueKey('run-assessment-button')));
-    await tester.pump();
+    await submitAssessment(tester, waitForCompletion: false);
 
     expect(createCount, 1);
     expect(find.text('Assessing...'), findsOneWidget);
@@ -202,10 +425,6 @@ void main() {
     );
     expect(button.onPressed, isNull);
 
-    await tester.tap(
-      find.byKey(const ValueKey('run-assessment-button')),
-      warnIfMissed: false,
-    );
     await tester.pump();
     expect(createCount, 1);
 
@@ -231,7 +450,7 @@ void main() {
     );
     await enterValidForm(tester);
 
-    await tapRunAssessment(tester);
+    await submitAssessment(tester);
 
     expect(createCount, 1);
     expect(find.text('Assessment Result'), findsNothing);
@@ -246,7 +465,7 @@ void main() {
     );
     expect(retryButton.onPressed, isNotNull);
 
-    await tapRunAssessment(tester);
+    await submitAssessment(tester);
 
     expect(createCount, 2);
     expect(find.text('Assessment Result'), findsOneWidget);
@@ -264,7 +483,7 @@ void main() {
     await tester.tap(find.text('Open assessment'));
     await tester.pumpAndSettle();
     await enterValidForm(tester);
-    await tapRunAssessment(tester);
+    await submitAssessment(tester);
 
     await tester.scrollUntilVisible(
       find.text('Return to Assessment History'),
@@ -278,44 +497,203 @@ void main() {
   });
 }
 
+Future<void> scrollAddAssessmentToTop(WidgetTester tester) async {
+  final scrollable = find
+      .descendant(
+        of: find.byType(AddAssessmentScreen),
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is Scrollable &&
+              (widget.axisDirection == AxisDirection.down ||
+                  widget.axisDirection == AxisDirection.up),
+        ),
+      )
+      .first;
+
+  final state = tester.state<ScrollableState>(scrollable);
+  state.position.jumpTo(state.position.minScrollExtent);
+  await tester.pumpAndSettle();
+}
+
 Future<void> pumpAddAssessment(
   WidgetTester tester, {
   required AssessmentCreator creator,
+  ValidatedAssessmentCreator? validatedCreator,
   AssessmentMapScreenBuilder? mapScreenBuilder,
 }) {
   return tester.pumpWidget(
     MaterialApp(
       home: AddAssessmentScreen(
         assessmentCreator: creator,
+        validatedAssessmentCreator: validatedCreator,
         mapScreenBuilder: mapScreenBuilder,
       ),
     ),
   );
 }
 
+AssessmentMapScreenBuilder mapReturning(
+  EastMalaysiaSiteValidationResult result,
+) {
+  return (context, initialValidationResult) => Scaffold(
+    body: ElevatedButton(
+      onPressed: () => Navigator.pop(context, result),
+      child: const Text('Return validated site'),
+    ),
+  );
+}
+
+Future<void> selectInjectedSite(WidgetTester tester) async {
+  await tapSelectSiteOnMap(tester);
+  await tester.tap(find.text('Return validated site'));
+  await tester.pumpAndSettle();
+}
+
+Future<void> tapSelectSiteOnMap(WidgetTester tester) async {
+  await scrollAssessmentFormToTop(tester);
+  final button = find.text('Select Site on Map');
+  expect(button, findsOneWidget);
+  await tester.tap(button);
+  await tester.pumpAndSettle();
+}
+
 Future<void> enterValidForm(WidgetTester tester) async {
-  final fields = find.byType(TextField);
-  await tester.enterText(fields.at(0), 'Kota Kinabalu');
-  await tester.enterText(fields.at(1), '1234.5');
-  await tester.enterText(fields.at(2), '25000');
-  await tester.enterText(fields.at(3), '2');
-  await tester.enterText(fields.at(4), '4.25');
+  await enterAssessmentField(
+    tester,
+    label: 'Location Name',
+    hint: 'Example: Setapak, Kuala Lumpur',
+    value: 'Kota Kinabalu',
+  );
+  await enterAssessmentField(
+    tester,
+    label: 'Population Density',
+    hint: 'People per square kilometre',
+    value: '1234.5',
+  );
+  await enterAssessmentField(
+    tester,
+    label: 'Registered Vehicle Count',
+    hint: 'Estimated vehicles in the area',
+    value: '25000',
+  );
+  await enterAssessmentField(
+    tester,
+    label: 'Nearby Fuel Stations',
+    hint: 'Number of nearby competitors',
+    value: '2',
+  );
+  await enterAssessmentField(
+    tester,
+    label: 'Nearest Competitor Distance',
+    hint: 'Distance in kilometres',
+    value: '4.25',
+  );
   await tester.scrollUntilVisible(
     find.byKey(const ValueKey('run-assessment-button')),
     300,
-    scrollable: find.byType(Scrollable).first,
+    scrollable: assessmentFormScrollable,
   );
   await tester.pumpAndSettle();
 }
 
-Future<void> tapRunAssessment(WidgetTester tester) async {
+Future<void> enterAssessmentField(
+  WidgetTester tester, {
+  required String label,
+  required String hint,
+  required String value,
+}) async {
+  final field = assessmentField(label: label, hint: hint);
+
   await tester.scrollUntilVisible(
-    find.byKey(const ValueKey('run-assessment-button')),
-    300,
-    scrollable: find.byType(Scrollable).first,
+    field,
+    200,
+    scrollable: assessmentFormScrollable,
   );
-  await tester.tap(find.byKey(const ValueKey('run-assessment-button')));
-  await tester.pumpAndSettle();
+  await tester.pump();
+  expect(field, findsOneWidget);
+  await tester.enterText(field, value);
+  await tester.pump();
+}
+
+Future<void> expectAssessmentFieldValue(
+  WidgetTester tester, {
+  required String label,
+  required String hint,
+  required String value,
+}) async {
+  final field = assessmentField(label: label, hint: hint);
+
+  await tester.scrollUntilVisible(
+    field,
+    200,
+    scrollable: assessmentFormScrollable,
+  );
+  await tester.pump();
+  expect(field, findsOneWidget);
+  final textField = tester.widget<TextField>(field);
+  expect(textField.controller, isNotNull);
+  expect(textField.controller!.text, value);
+}
+
+Finder assessmentField({required String label, required String hint}) {
+  return find.descendant(
+    of: find.byType(AddAssessmentScreen),
+    matching: find.byWidgetPredicate(
+      (widget) =>
+          widget is TextField &&
+          widget.decoration?.labelText == label &&
+          widget.decoration?.hintText == hint,
+      description: 'assessment field labelled "$label"',
+    ),
+  );
+}
+
+Finder get assessmentFormScrollable => find.descendant(
+  of: find.byType(AddAssessmentScreen),
+  matching: find.byWidgetPredicate(
+    (widget) =>
+        widget is Scrollable && widget.axisDirection == AxisDirection.down,
+    description: 'vertical assessment form scrollable',
+  ),
+);
+
+Future<void> scrollAssessmentFormToTop(WidgetTester tester) async {
+  expect(assessmentFormScrollable, findsOneWidget);
+  tester.testTextInput.hide();
+  await tester.pump();
+  final scrollableState = tester.state<ScrollableState>(
+    assessmentFormScrollable,
+  );
+  scrollableState.position.jumpTo(scrollableState.position.minScrollExtent);
+  await tester.pump();
+}
+
+Future<void> submitAssessment(
+  WidgetTester tester, {
+  bool waitForCompletion = true,
+}) async {
+  FocusManager.instance.primaryFocus?.unfocus();
+  tester.testTextInput.hide();
+  await tester.pump();
+
+  expect(assessmentFormScrollable, findsOneWidget);
+  final state = tester.state<ScrollableState>(assessmentFormScrollable);
+  state.position.jumpTo(state.position.maxScrollExtent);
+  await tester.pump();
+
+  final buttonFinder = find.byKey(const ValueKey('run-assessment-button'));
+  expect(buttonFinder, findsOneWidget);
+
+  final button = tester.widget<ElevatedButton>(buttonFinder);
+  expect(button.onPressed, isNotNull);
+
+  button.onPressed!();
+
+  if (waitForCompletion) {
+    await tester.pumpAndSettle();
+  } else {
+    await tester.pump();
+  }
 }
 
 class AssessmentRouteHost extends StatefulWidget {
@@ -397,5 +775,14 @@ EastMalaysiaSiteValidationResult insideResult({
     },
     point: point,
     analysisRadiusKm: radius,
+  );
+}
+
+EastMalaysiaSiteValidationResult defaultInsideResult() {
+  return insideResult(
+    point: GeoPoint(latitude: 5.9804, longitude: 116.0735),
+    radius: 5,
+    territory: EastMalaysiaTerritory.sabah,
+    datasetId: firstDatasetId,
   );
 }
