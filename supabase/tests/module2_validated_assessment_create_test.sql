@@ -291,6 +291,13 @@ select pg_temp.assert_true(
 );
 
 select pg_temp.assert_true(
+  pg_catalog.to_regprocedure(
+    'public.create_validated_station_assessment(text,numeric,integer,integer,integer,numeric,integer,integer,integer,integer,numeric,text,text,text,double precision,double precision,smallint,uuid)'
+  ) is not null,
+  'validated assessment create RPC must exist with the exact expected signature'
+);
+
+select pg_temp.assert_true(
   not exists (
     select 1
     from pg_temp.module2_validated_create_test_points as test_point
@@ -743,9 +750,24 @@ begin
   loop
     begin
       perform public.create_validated_station_assessment(
-        'Rejected invalid input', 1234.5, 4, 25000, 2, 4.25,
-        5, 4, 3, 2, 72.3, 'Good', 'Recommendation', 'Explanation',
-        v_case.latitude, v_case.longitude, v_case.radius, v_dataset_id
+        p_location_name => 'Rejected invalid input'::text,
+        p_population_density => 1234.5::numeric,
+        p_traffic_level => 4::integer,
+        p_registered_vehicle_count => 25000::integer,
+        p_nearby_fuel_stations => 2::integer,
+        p_competitor_distance_km => 4.25::numeric,
+        p_road_accessibility => 5::integer,
+        p_commercial_activity => 4::integer,
+        p_residential_activity => 3::integer,
+        p_land_accessibility => 2::integer,
+        p_final_score => 72.3::numeric,
+        p_suitability_category => 'Good'::text,
+        p_recommendation => 'Recommendation'::text,
+        p_explanation => 'Explanation'::text,
+        p_latitude => v_case.latitude::double precision,
+        p_longitude => v_case.longitude::double precision,
+        p_analysis_radius_km => v_case.radius::smallint,
+        p_expected_boundary_dataset_id => v_dataset_id::uuid
       );
       raise exception 'Expected % to fail', v_case.case_name;
     exception
@@ -929,9 +951,25 @@ select pg_catalog.set_config(
 do $module2_validated_create_no_company$
 begin
   perform public.create_validated_station_assessment(
-    'No company', 1, 3, 1, 0, 1, 3, 3, 3, 3, 50,
-    'Moderate', 'No', 'No', 5, 116, 3,
-    '59000000-0000-0000-0000-000000000001'
+    p_location_name => 'No company'::text,
+    p_population_density => 1::numeric,
+    p_traffic_level => 3::integer,
+    p_registered_vehicle_count => 1::integer,
+    p_nearby_fuel_stations => 0::integer,
+    p_competitor_distance_km => 1::numeric,
+    p_road_accessibility => 3::integer,
+    p_commercial_activity => 3::integer,
+    p_residential_activity => 3::integer,
+    p_land_accessibility => 3::integer,
+    p_final_score => 50::numeric,
+    p_suitability_category => 'Moderate'::text,
+    p_recommendation => 'No'::text,
+    p_explanation => 'No'::text,
+    p_latitude => 5::double precision,
+    p_longitude => 116::double precision,
+    p_analysis_radius_km => 3::smallint,
+    p_expected_boundary_dataset_id =>
+      '59000000-0000-0000-0000-000000000001'::uuid
   );
   raise exception 'Expected no-company caller to fail';
 exception
@@ -951,9 +989,25 @@ select pg_catalog.set_config(
 do $module2_validated_create_missing_profile$
 begin
   perform public.create_validated_station_assessment(
-    'Missing profile', 1, 3, 1, 0, 1, 3, 3, 3, 3, 50,
-    'Moderate', 'No', 'No', 5, 116, 3,
-    '59000000-0000-0000-0000-000000000001'
+    p_location_name => 'Missing profile'::text,
+    p_population_density => 1::numeric,
+    p_traffic_level => 3::integer,
+    p_registered_vehicle_count => 1::integer,
+    p_nearby_fuel_stations => 0::integer,
+    p_competitor_distance_km => 1::numeric,
+    p_road_accessibility => 3::integer,
+    p_commercial_activity => 3::integer,
+    p_residential_activity => 3::integer,
+    p_land_accessibility => 3::integer,
+    p_final_score => 50::numeric,
+    p_suitability_category => 'Moderate'::text,
+    p_recommendation => 'No'::text,
+    p_explanation => 'No'::text,
+    p_latitude => 5::double precision,
+    p_longitude => 116::double precision,
+    p_analysis_radius_km => 3::smallint,
+    p_expected_boundary_dataset_id =>
+      '59000000-0000-0000-0000-000000000001'::uuid
   );
   raise exception 'Expected missing-profile caller to fail';
 exception
@@ -969,9 +1023,25 @@ select pg_catalog.set_config('request.jwt.claim.sub', '', true);
 do $module2_validated_create_anon$
 begin
   perform public.create_validated_station_assessment(
-    'Anonymous', 1, 3, 1, 0, 1, 3, 3, 3, 3, 50,
-    'Moderate', 'No', 'No', 5, 116, 3,
-    '59000000-0000-0000-0000-000000000001'
+    p_location_name => 'Anonymous'::text,
+    p_population_density => 1::numeric,
+    p_traffic_level => 3::integer,
+    p_registered_vehicle_count => 1::integer,
+    p_nearby_fuel_stations => 0::integer,
+    p_competitor_distance_km => 1::numeric,
+    p_road_accessibility => 3::integer,
+    p_commercial_activity => 3::integer,
+    p_residential_activity => 3::integer,
+    p_land_accessibility => 3::integer,
+    p_final_score => 50::numeric,
+    p_suitability_category => 'Moderate'::text,
+    p_recommendation => 'No'::text,
+    p_explanation => 'No'::text,
+    p_latitude => 5::double precision,
+    p_longitude => 116::double precision,
+    p_analysis_radius_km => 3::smallint,
+    p_expected_boundary_dataset_id =>
+      '59000000-0000-0000-0000-000000000001'::uuid
   );
   raise exception 'Expected anonymous caller to fail';
 exception
