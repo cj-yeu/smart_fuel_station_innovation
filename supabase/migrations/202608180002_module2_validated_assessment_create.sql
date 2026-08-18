@@ -8,9 +8,9 @@ do $module2_validated_create_preconditions$
 begin
   if exists (
     select 1
-    from pg_catalog.pg_roles as current_role
-    where current_role.rolname = current_user
-      and current_role.rolname in ('anon', 'authenticated', 'service_role')
+    from pg_catalog.pg_roles as migration_role_entry
+    where migration_role_entry.rolname = current_user
+      and migration_role_entry.rolname in ('anon', 'authenticated', 'service_role')
   ) then
     raise exception
       'Module 2 validated assessment creation requires a non-API migration owner';
