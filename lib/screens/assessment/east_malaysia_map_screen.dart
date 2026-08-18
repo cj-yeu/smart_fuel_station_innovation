@@ -20,6 +20,8 @@ typedef EastMalaysiaSiteValidator =
       required GeoPoint point,
       required double analysisRadiusKm,
     });
+typedef EastMalaysiaExternalUrlLauncher =
+    Future<bool> Function(Uri url, {LaunchMode mode});
 
 class EastMalaysiaMapScreen extends StatefulWidget {
   static const tileUrlTemplate =
@@ -28,6 +30,12 @@ class EastMalaysiaMapScreen extends StatefulWidget {
       'com.example.smart_fuell_station_innovation';
   static final osmCopyrightUri = Uri.parse(
     'https://www.openstreetmap.org/copyright',
+  );
+  static final geoBoundariesProjectUri = Uri.parse(
+    'https://www.geoboundaries.org/',
+  );
+  static final ccByFourLicenceUri = Uri.parse(
+    'https://creativecommons.org/licenses/by/4.0/',
   );
   static const osmAttributionLaunchMode = LaunchMode.externalApplication;
 
@@ -84,13 +92,81 @@ class EastMalaysiaMapScreen extends StatefulWidget {
   }
 
   @visibleForTesting
-  static SimpleAttributionWidget buildOsmAttribution() {
+  static SimpleAttributionWidget buildOsmAttribution({
+    EastMalaysiaExternalUrlLauncher? launcher,
+  }) {
+    final externalLauncher = launcher ?? launchUrl;
     return SimpleAttributionWidget(
       source: const Text('OpenStreetMap contributors'),
       alignment: Alignment.bottomRight,
       onTap: () async {
-        await launchUrl(osmCopyrightUri, mode: osmAttributionLaunchMode);
+        await externalLauncher(osmCopyrightUri, mode: osmAttributionLaunchMode);
       },
+    );
+  }
+
+  @visibleForTesting
+  static Widget buildBoundaryAttribution({
+    EastMalaysiaExternalUrlLauncher? launcher,
+  }) {
+    final externalLauncher = launcher ?? launchUrl;
+
+    return Align(
+      key: const ValueKey('boundary-data-attribution'),
+      alignment: Alignment.bottomRight,
+      child: Padding(
+        padding: const EdgeInsets.only(right: 4, bottom: 28),
+        child: Material(
+          color: const Color(0xD9FFFFFF),
+          borderRadius: BorderRadius.circular(4),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+            child: Wrap(
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                const Text(
+                  'Boundary validation: ',
+                  style: TextStyle(fontSize: 11),
+                ),
+                InkWell(
+                  key: const ValueKey('geoboundaries-attribution-link'),
+                  onTap: () async {
+                    await externalLauncher(
+                      geoBoundariesProjectUri,
+                      mode: osmAttributionLaunchMode,
+                    );
+                  },
+                  child: const Text(
+                    'geoBoundaries',
+                    style: TextStyle(
+                      fontSize: 11,
+                      decoration: TextDecoration.underline,
+                    ),
+                  ),
+                ),
+                const Text(' (', style: TextStyle(fontSize: 11)),
+                InkWell(
+                  key: const ValueKey('cc-by-four-attribution-link'),
+                  onTap: () async {
+                    await externalLauncher(
+                      ccByFourLicenceUri,
+                      mode: osmAttributionLaunchMode,
+                    );
+                  },
+                  child: const Text(
+                    'CC BY 4.0',
+                    style: TextStyle(
+                      fontSize: 11,
+                      decoration: TextDecoration.underline,
+                    ),
+                  ),
+                ),
+                const Text(')', style: TextStyle(fontSize: 11)),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -412,6 +488,7 @@ class _ProductionEastMalaysiaMap extends StatelessWidget {
           userAgentPackageName: EastMalaysiaMapScreen.tileUserAgentPackageName,
         ),
         ...EastMalaysiaMapScreen.buildSelectionLayers(candidate),
+        EastMalaysiaMapScreen.buildBoundaryAttribution(),
         EastMalaysiaMapScreen.buildOsmAttribution(),
       ],
     );
