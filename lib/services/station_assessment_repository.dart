@@ -88,9 +88,11 @@ class StationAssessmentRepository {
   /// Creates an assessment whose geography is revalidated and persisted by
   /// PostgreSQL in the same transaction.
   ///
-  /// Only the 14 content values, candidate coordinates/radius, and expected
-  /// boundary dataset UUID are sent. Ownership, territory, status, provenance,
-  /// and validation time are authoritative RPC outputs and never client input.
+  /// Only the 14 content values, candidate coordinates/radius, expected
+  /// boundary dataset UUID, and a logical request UUID are sent. The request
+  /// UUID makes a retry idempotent; it is not an ownership or authorization
+  /// input. Ownership, territory, status, provenance, and validation time are
+  /// authoritative RPC outputs and never client input.
   Future<StationAssessment> createValidatedAssessment(
     StationAssessmentValidatedCreateInput input,
   ) async {

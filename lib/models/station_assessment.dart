@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'assessment_site_candidate.dart';
 import 'east_malaysia_territory.dart';
@@ -36,6 +37,7 @@ class StationAssessment {
   final EastMalaysiaTerritory? confirmedTerritory;
   final String? boundaryDatasetId;
   final DateTime? geographicallyValidatedAt;
+  final String? validatedCreateRequestId;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -64,6 +66,7 @@ class StationAssessment {
     this.confirmedTerritory,
     this.boundaryDatasetId,
     this.geographicallyValidatedAt,
+    this.validatedCreateRequestId,
     required this.createdAt,
     required this.updatedAt,
   }) {
@@ -108,6 +111,10 @@ class StationAssessment {
       geographicallyValidatedAt: _parseNullableDateTime(
         map['geographically_validated_at'],
       ),
+      validatedCreateRequestId: _parseNullableUuid(
+        map['validated_create_request_id'],
+        fieldName: 'validated create request ID',
+      ),
       createdAt: DateTime.parse(map['created_at'] as String),
       updatedAt: DateTime.parse(map['updated_at'] as String),
     );
@@ -118,10 +125,15 @@ class StationAssessment {
 
     Object? decoded = value;
     if (value is String) {
-      try {
-        decoded = jsonDecode(value);
-      } on FormatException {
-        throw const FormatException('Assessment site location is malformed.');
+      final wireValue = value.trim();
+      if (wireValue.startsWith('{')) {
+        try {
+          decoded = jsonDecode(wireValue);
+        } on FormatException {
+          throw const FormatException('Assessment site location is malformed.');
+        }
+      } else {
+        return _parseEwkbPoint(wireValue);
       }
     }
 
@@ -141,10 +153,72 @@ class StationAssessment {
       );
     }
 
-    return GeoPoint(
+    return _checkedGeoPoint(
       longitude: (coordinates[0] as num).toDouble(),
       latitude: (coordinates[1] as num).toDouble(),
     );
+  }
+
+  static GeoPoint _parseEwkbPoint(String value) {
+    final hex = value.startsWith(r'\x') ? value.substring(2) : value;
+    if (hex.length != 50 || !RegExp(r'^[0-9a-fA-F]+$').hasMatch(hex)) {
+      throw const FormatException(
+        'Assessment site location EWKB is malformed.',
+      );
+    }
+
+    final bytes = Uint8List(hex.length ~/ 2);
+    for (var index = 0; index < bytes.length; index++) {
+      bytes[index] = int.parse(
+        hex.substring(index * 2, index * 2 + 2),
+        radix: 16,
+      );
+    }
+
+    final endian = switch (bytes[0]) {
+      0 => Endian.big,
+      1 => Endian.little,
+      _ => throw const FormatException(
+        'Assessment site location EWKB byte order is invalid.',
+      ),
+    };
+    final data = ByteData.sublistView(bytes);
+    final geometryType = data.getUint32(1, endian);
+    const hasZ = 0x80000000;
+    const hasM = 0x40000000;
+    const hasSrid = 0x20000000;
+    const baseTypeMask = 0x1fffffff;
+
+    if (geometryType & (hasZ | hasM) != 0 ||
+        geometryType & hasSrid == 0 ||
+        geometryType & baseTypeMask != 1) {
+      throw const FormatException(
+        'Assessment site location EWKB must be a two-dimensional Point.',
+      );
+    }
+    if (data.getUint32(5, endian) != 4326) {
+      throw const FormatException(
+        'Assessment site location EWKB must use SRID 4326.',
+      );
+    }
+
+    return _checkedGeoPoint(
+      longitude: data.getFloat64(9, endian),
+      latitude: data.getFloat64(17, endian),
+    );
+  }
+
+  static GeoPoint _checkedGeoPoint({
+    required double latitude,
+    required double longitude,
+  }) {
+    try {
+      return GeoPoint(latitude: latitude, longitude: longitude);
+    } on ArgumentError {
+      throw const FormatException(
+        'Assessment site location coordinates are invalid.',
+      );
+    }
   }
 
   static int? _parseAnalysisRadius(Object? value) {
@@ -197,15 +271,20 @@ class StationAssessment {
   }
 
   static String? _parseBoundaryDatasetId(Object? value) {
+    return _parseNullableUuid(value, fieldName: 'boundary dataset ID');
+  }
+
+  static String? _parseNullableUuid(
+    Object? value, {
+    required String fieldName,
+  }) {
     if (value == null) return null;
     if (value is! String ||
         !RegExp(
           r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
           caseSensitive: false,
         ).hasMatch(value)) {
-      throw const FormatException(
-        'Assessment boundary dataset ID must be a valid UUID.',
-      );
+      throw FormatException('Assessment $fieldName must be a valid UUID.');
     }
     return value;
   }

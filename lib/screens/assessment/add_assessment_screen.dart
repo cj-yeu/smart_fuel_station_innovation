@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../models/east_malaysia_site_validation_result.dart';
 import '../../models/station_assessment.dart';
@@ -16,6 +17,7 @@ typedef ValidatedAssessmentCreator =
     Future<StationAssessment> Function(
       StationAssessmentValidatedCreateInput input,
     );
+typedef AssessmentRequestIdGenerator = String Function();
 typedef AssessmentMapScreenBuilder =
     Widget Function(
       BuildContext context,
@@ -26,12 +28,14 @@ class AddAssessmentScreen extends StatefulWidget {
   final AssessmentCreator? assessmentCreator;
   final ValidatedAssessmentCreator? validatedAssessmentCreator;
   final AssessmentMapScreenBuilder? mapScreenBuilder;
+  final AssessmentRequestIdGenerator? requestIdGenerator;
 
   const AddAssessmentScreen({
     super.key,
     this.assessmentCreator,
     this.validatedAssessmentCreator,
     this.mapScreenBuilder,
+    this.requestIdGenerator,
   });
 
   @override
@@ -57,6 +61,8 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
   bool requiresSiteRevalidation = false;
   String? submissionErrorMessage;
   EastMalaysiaSiteValidationResult? selectedSiteValidationResult;
+  String? validatedRequestId;
+  String? validatedPayloadFingerprint;
 
   @override
   void initState() {
@@ -143,14 +149,28 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
 
       final validationResult = selectedSiteValidationResult;
       if (validationResult != null) {
+        final payloadFingerprint =
+            StationAssessmentValidatedCreateInput.payloadFingerprint(
+              content: input,
+              validationResult: validationResult,
+            );
+        if (validatedPayloadFingerprint != payloadFingerprint ||
+            validatedRequestId == null) {
+          validatedPayloadFingerprint = payloadFingerprint;
+          validatedRequestId =
+              (widget.requestIdGenerator ?? _generateRequestId)();
+        }
         final validatedInput = StationAssessmentValidatedCreateInput(
           content: input,
           validationResult: validationResult,
+          requestId: validatedRequestId!,
         );
         await (widget.validatedAssessmentCreator ??
             StationAssessmentRepository(
               Supabase.instance.client,
             ).createValidatedAssessment)(validatedInput);
+        validatedRequestId = null;
+        validatedPayloadFingerprint = null;
       } else {
         await assessmentCreator(input);
       }
@@ -178,6 +198,8 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
         setState(() {
           selectedSiteValidationResult = null;
           requiresSiteRevalidation = true;
+          validatedRequestId = null;
+          validatedPayloadFingerprint = null;
           submissionErrorMessage =
               'Please validate the selected site again before continuing.';
         });
@@ -505,3 +527,5 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
     }
   }
 }
+
+String _generateRequestId() => const Uuid().v4();

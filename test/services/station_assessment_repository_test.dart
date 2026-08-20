@@ -34,6 +34,11 @@ void main() {
       expect(assessment.id, assessmentId);
       expect(assessment.userId, userId);
       expect(assessment.confirmedTerritory?.storageValue, 'sabah');
+      expect(
+        assessment.siteLocation,
+        GeoPoint(latitude: 5.9804, longitude: 116.0735),
+      );
+      expect(assessment.validatedCreateRequestId, requestId);
     });
 
     for (final malformed in <Object?>[
@@ -136,6 +141,7 @@ StationAssessmentValidatedCreateInput validatedInput() {
       point: GeoPoint(latitude: 5.9804, longitude: 116.0735),
       analysisRadiusKm: 5,
     ),
+    requestId: requestId,
   );
 }
 
@@ -158,15 +164,13 @@ Map<String, dynamic> validatedAssessmentRow() {
     'suitability_category': 'Good',
     'recommendation': 'Recommendation',
     'explanation': 'Explanation',
-    'site_location': {
-      'type': 'Point',
-      'coordinates': [116.0735, 5.9804],
-    },
+    'site_location': '0101000020E610000062105839B4045D405DFE43FAEDEB1740',
     'analysis_radius_km': 5,
     'geographic_validation_status': 'inside',
     'confirmed_territory': 'sabah',
     'boundary_dataset_id': datasetId,
     'geographically_validated_at': '2026-08-18T01:02:03.000Z',
+    'validated_create_request_id': requestId,
     'created_at': '2026-08-18T01:02:03.000Z',
     'updated_at': '2026-08-18T01:02:03.000Z',
   };
@@ -177,6 +181,7 @@ const companyId = '51000000-0000-0000-0000-000000000001';
 const assessmentId = '53000000-0000-0000-0000-000000000001';
 const secondAssessmentId = '53000000-0000-0000-0000-000000000002';
 const datasetId = 'de8b4433-7315-5e60-8195-1d76744765eb';
+const requestId = '73000000-0000-0000-0000-000000000001';
 
 const contentInput = StationAssessmentCreateInput(
   locationName: 'Validated Sabah site',
