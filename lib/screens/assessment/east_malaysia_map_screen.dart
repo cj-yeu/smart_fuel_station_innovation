@@ -5,9 +5,13 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../models/assessment_site_candidate.dart';
+import '../../models/east_malaysia_map_selection.dart';
 import '../../models/east_malaysia_site_validation_result.dart';
 import '../../models/geo_point.dart';
+import '../../models/nearby_fuel_station.dart';
+import '../../models/nearby_fuel_station_result.dart';
 import '../../services/east_malaysia_geography_repository.dart';
+import '../../services/nearby_fuel_station_repository.dart';
 
 typedef EastMalaysiaMapContentBuilder =
     Widget Function(
@@ -20,6 +24,10 @@ typedef EastMalaysiaSiteValidator =
       required GeoPoint point,
       required double analysisRadiusKm,
     });
+typedef NearbyFuelStationLoader =
+    Future<NearbyFuelStationResult> Function(
+      EastMalaysiaSiteValidationResult validationResult,
+    );
 typedef EastMalaysiaExternalUrlLauncher =
     Future<bool> Function(Uri url, {LaunchMode mode});
 
@@ -40,15 +48,19 @@ class EastMalaysiaMapScreen extends StatefulWidget {
   static const osmAttributionLaunchMode = LaunchMode.externalApplication;
 
   final EastMalaysiaSiteValidationResult? initialValidationResult;
+  final EastMalaysiaMapSelection? initialSelection;
   final EastMalaysiaMapContentBuilder? mapContentBuilder;
   final EastMalaysiaSiteValidator? validator;
+  final NearbyFuelStationLoader? nearbyFuelStationLoader;
 
   const EastMalaysiaMapScreen({
     super.key,
     this.initialValidationResult,
+    this.initialSelection,
     this.mapContentBuilder,
     this.validator,
-  });
+    this.nearbyFuelStationLoader,
+  }) : assert(initialValidationResult == null || initialSelection == null);
 
   @visibleForTesting
   static List<Widget> buildSelectionLayers(AssessmentSiteCandidate? candidate) {
@@ -89,6 +101,33 @@ class EastMalaysiaMapScreen extends StatefulWidget {
         ],
       ),
     ];
+  }
+
+  @visibleForTesting
+  static MarkerLayer buildFuelStationMarkers(
+    List<NearbyFuelStation> stations,
+  ) {
+    return MarkerLayer(
+      markers: stations
+          .map(
+            (station) => Marker(
+              point: LatLng(station.latitude, station.longitude),
+              width: 36,
+              height: 36,
+              alignment: Alignment.center,
+              child: Semantics(
+                label: 'Fuel station ${station.name ?? station.osmId}',
+                child: const Icon(
+                  Icons.local_gas_station,
+                  color: Color(0xFF1565C0),
+                  size: 28,
+                  shadows: [Shadow(color: Colors.white, blurRadius: 3)],
+                ),
+              ),
+            ),
+          )
+          .toList(growable: false),
+    );
   }
 
   @visibleForTesting
@@ -175,21 +214,48 @@ class EastMalaysiaMapScreen extends StatefulWidget {
 }
 
 class _EastMalaysiaMapScreenState extends State<EastMalaysiaMapScreen> {
-  late GeoPoint? selectedPoint =
-      widget.initialValidationResult?.candidate.point;
-  late double selectedRadiusKm =
-      widget.initialValidationResult?.candidate.analysisRadiusKm ?? 5;
-  late EastMalaysiaSiteValidationResult? validationResult =
-      widget.initialValidationResult;
+  late GeoPoint? selectedPoint;
+  late double selectedRadiusKm;
+  late EastMalaysiaSiteValidationResult? validationResult;
+  late NearbyFuelStationResult? nearbyFuelStationResult;
   EastMalaysiaSiteValidator? _productionValidator;
+  NearbyFuelStationLoader? _productionNearbyFuelStationLoader;
   bool isValidating = false;
+  bool isLoadingNearbyFuelStations = false;
   String? validationError;
+  String? nearbyFuelStationError;
+
+  @override
+  void initState() {
+    super.initState();
+    final initialValidation =
+        widget.initialSelection?.validationResult ??
+        widget.initialValidationResult;
+    selectedPoint = initialValidation?.candidate.point;
+    selectedRadiusKm = initialValidation?.candidate.analysisRadiusKm ?? 5;
+    validationResult = initialValidation;
+    nearbyFuelStationResult = widget.initialSelection?.nearbyFuelStations;
+    if (initialValidation?.candidate.isValidatedInside == true &&
+        nearbyFuelStationResult == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && validationResult == initialValidation) {
+          loadNearbyFuelStations(initialValidation!);
+        }
+      });
+    }
+  }
 
   EastMalaysiaSiteValidator get validator =>
       widget.validator ??
       (_productionValidator ??= EastMalaysiaGeographyRepository(
         Supabase.instance.client,
       ).validateSite);
+
+  NearbyFuelStationLoader get nearbyFuelStationLoader =>
+      widget.nearbyFuelStationLoader ??
+      (_productionNearbyFuelStationLoader ??= NearbyFuelStationRepository(
+        Supabase.instance.client,
+      ).fetchForValidatedSite);
 
   AssessmentSiteCandidate? get candidate {
     final validatedCandidate = validationResult?.candidate;
@@ -211,6 +277,8 @@ class _EastMalaysiaMapScreenState extends State<EastMalaysiaMapScreen> {
       selectedPoint = point;
       validationResult = null;
       validationError = null;
+      nearbyFuelStationResult = null;
+      nearbyFuelStationError = null;
     });
   }
 
@@ -220,6 +288,8 @@ class _EastMalaysiaMapScreenState extends State<EastMalaysiaMapScreen> {
       selectedRadiusKm = radiusKm;
       validationResult = null;
       validationError = null;
+      nearbyFuelStationResult = null;
+      nearbyFuelStationError = null;
     });
   }
 
@@ -244,6 +314,9 @@ class _EastMalaysiaMapScreenState extends State<EastMalaysiaMapScreen> {
         selectedPoint = result.candidate.point;
         selectedRadiusKm = result.candidate.analysisRadiusKm;
       });
+      if (result.candidate.isValidatedInside) {
+        await loadNearbyFuelStations(result);
+      }
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -253,6 +326,40 @@ class _EastMalaysiaMapScreenState extends State<EastMalaysiaMapScreen> {
       if (mounted) {
         setState(() {
           isValidating = false;
+        });
+      }
+    }
+  }
+
+  Future<void> loadNearbyFuelStations(
+    EastMalaysiaSiteValidationResult result,
+  ) async {
+    if (!result.candidate.isValidatedInside || isLoadingNearbyFuelStations) {
+      return;
+    }
+
+    setState(() {
+      isLoadingNearbyFuelStations = true;
+      nearbyFuelStationError = null;
+    });
+    try {
+      final stations = await nearbyFuelStationLoader(result);
+      if (!mounted || validationResult != result) return;
+      setState(() {
+        nearbyFuelStationResult = stations;
+      });
+    } catch (_) {
+      if (!mounted || validationResult != result) return;
+      setState(() {
+        nearbyFuelStationResult = null;
+        nearbyFuelStationError =
+            'Nearby fuel-station data is unavailable. You can retry or '
+            'continue without it.';
+      });
+    } finally {
+      if (mounted && validationResult == result) {
+        setState(() {
+          isLoadingNearbyFuelStations = false;
         });
       }
     }
@@ -280,6 +387,85 @@ class _EastMalaysiaMapScreenState extends State<EastMalaysiaMapScreen> {
             GeographicValidationStatus.inside
         ? const Color(0xFF1B5E20)
         : const Color(0xFFC62828);
+  }
+
+  Widget buildNearbyFuelStationStatus() {
+    final result = validationResult;
+    if (result?.candidate.isValidatedInside != true) {
+      return const SizedBox.shrink();
+    }
+
+    if (isLoadingNearbyFuelStations) {
+      return const Padding(
+        padding: EdgeInsets.only(top: 8),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            SizedBox(width: 8),
+            Text('Loading nearby fuel stations...'),
+          ],
+        ),
+      );
+    }
+
+    if (nearbyFuelStationError != null) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Column(
+          children: [
+            Text(
+              nearbyFuelStationError!,
+              key: const ValueKey('nearby-fuel-stations-error'),
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Color(0xFFC62828)),
+            ),
+            TextButton(
+              key: const ValueKey('retry-nearby-fuel-stations-button'),
+              onPressed: () => loadNearbyFuelStations(result!),
+              child: const Text('Retry nearby fuel stations'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final stations = nearbyFuelStationResult;
+    if (stations == null) return const SizedBox.shrink();
+    final nearest = stations.nearestDistanceKm;
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: DecoratedBox(
+        key: const ValueKey('nearby-fuel-stations-summary'),
+        decoration: const BoxDecoration(
+          color: Color(0xFFE8F1FC),
+          borderRadius: BorderRadius.all(Radius.circular(8)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(8),
+          child: Column(
+            children: [
+              Text('Nearby fuel stations: ${stations.stationCount}'),
+              Text(
+                nearest == null
+                    ? 'Nearest competitor: none within the analysis radius'
+                    : 'Nearest competitor: ${nearest.toStringAsFixed(2)} km',
+              ),
+              for (final station in stations.stations)
+                Text(
+                  '${station.name ?? station.brand ?? station.operatorName ?? 'Unnamed station'} '
+                  '(${station.distanceKm.toStringAsFixed(2)} km)',
+                  textAlign: TextAlign.center,
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -330,6 +516,7 @@ class _EastMalaysiaMapScreenState extends State<EastMalaysiaMapScreen> {
                 ) ??
                 _ProductionEastMalaysiaMap(
                   candidate: currentCandidate,
+                  fuelStations: nearbyFuelStationResult?.stations ?? const [],
                   onPointSelected: selectPoint,
                 ),
           ),
@@ -368,6 +555,7 @@ class _EastMalaysiaMapScreenState extends State<EastMalaysiaMapScreen> {
                     textAlign: TextAlign.center,
                     style: const TextStyle(color: Color(0xFFC62828)),
                   ),
+                buildNearbyFuelStationStatus(),
                 const Text(
                   'The radius circle is analysis context, not proof of '
                   'territory eligibility.',
@@ -426,7 +614,13 @@ class _EastMalaysiaMapScreenState extends State<EastMalaysiaMapScreen> {
                             !isValidating &&
                                 validationResult?.candidate.isValidatedInside ==
                                     true
-                            ? () => Navigator.pop(context, validationResult)
+                            ? () => Navigator.pop(
+                                context,
+                                EastMalaysiaMapSelection(
+                                  validationResult: validationResult!,
+                                  nearbyFuelStations: nearbyFuelStationResult,
+                                ),
+                              )
                             : null,
                         child: const Text('Use This Candidate'),
                       ),
@@ -444,10 +638,12 @@ class _EastMalaysiaMapScreenState extends State<EastMalaysiaMapScreen> {
 
 class _ProductionEastMalaysiaMap extends StatelessWidget {
   final AssessmentSiteCandidate? candidate;
+  final List<NearbyFuelStation> fuelStations;
   final ValueChanged<GeoPoint> onPointSelected;
 
   const _ProductionEastMalaysiaMap({
     required this.candidate,
+    required this.fuelStations,
     required this.onPointSelected,
   });
 
@@ -488,6 +684,7 @@ class _ProductionEastMalaysiaMap extends StatelessWidget {
           userAgentPackageName: EastMalaysiaMapScreen.tileUserAgentPackageName,
         ),
         ...EastMalaysiaMapScreen.buildSelectionLayers(candidate),
+        EastMalaysiaMapScreen.buildFuelStationMarkers(fuelStations),
         EastMalaysiaMapScreen.buildBoundaryAttribution(),
         EastMalaysiaMapScreen.buildOsmAttribution(),
       ],
