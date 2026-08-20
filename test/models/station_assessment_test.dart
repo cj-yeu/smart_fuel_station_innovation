@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smart_fuell_station_innovation/models/station_assessment.dart';
 import 'package:smart_fuell_station_innovation/models/east_malaysia_territory.dart';
@@ -90,6 +92,77 @@ void main() {
         assessment.geographicallyValidatedAt,
         DateTime.parse('2026-08-18T01:02:03.000Z'),
       );
+    });
+
+    test('parses the PostgREST EWKB geography wire representation', () {
+      final assessment = StationAssessment.fromMap({
+        ...validatedInsideRow(),
+        'site_location': '0101000020E610000062105839B4045D405DFE43FAEDEB1740',
+      });
+
+      expect(
+        assessment.siteLocation,
+        GeoPoint(latitude: 5.9804, longitude: 116.0735),
+      );
+    });
+
+    test('parses a bytea-prefixed EWKB Point representation', () {
+      final assessment = StationAssessment.fromMap({
+        ...validatedInsideRow(),
+        'site_location':
+            r'\x0101000020E610000062105839B4045D405DFE43FAEDEB1740',
+      });
+
+      expect(
+        assessment.siteLocation,
+        GeoPoint(latitude: 5.9804, longitude: 116.0735),
+      );
+    });
+
+    test('parses big-endian EWKB Point with SRID 4326', () {
+      final assessment = StationAssessment.fromMap({
+        ...validatedInsideRow(),
+        'site_location': ewkbPoint(
+          latitude: 5.9804,
+          longitude: 116.0735,
+          endian: Endian.big,
+        ),
+      });
+
+      expect(
+        assessment.siteLocation,
+        GeoPoint(latitude: 5.9804, longitude: 116.0735),
+      );
+    });
+
+    test('rejects malformed or unsupported EWKB geography', () {
+      final malformedValues = <String>[
+        '',
+        'not-hex',
+        '0201000020E610000062105839B4045D405DFE43FAEDEB1740',
+        '0101000020E610000062105839B4045D405DFE43FAEDEB17',
+        '0101000020E610000062105839B4045D405DFE43FAEDEB174000',
+        ewkbPoint(latitude: 5.9804, longitude: 116.0735, type: 2),
+        ewkbPoint(latitude: 5.9804, longitude: 116.0735, type: 0xa0000001),
+        ewkbPoint(latitude: 5.9804, longitude: 116.0735, type: 0x60000001),
+        '01e903000062105839b4045d405dfe43faedeb17400000000000000000',
+        ewkbPoint(latitude: 5.9804, longitude: 116.0735, srid: 3857),
+        ewkbPoint(latitude: double.nan, longitude: 116.0735),
+        ewkbPoint(latitude: double.infinity, longitude: 116.0735),
+        ewkbPoint(latitude: 5.9804, longitude: double.negativeInfinity),
+        ewkbPoint(latitude: 91, longitude: 116.0735),
+      ];
+
+      for (final value in malformedValues) {
+        expect(
+          () => StationAssessment.fromMap({
+            ...validatedInsideRow(),
+            'site_location': value,
+          }),
+          throwsFormatException,
+          reason: value,
+        );
+      }
     });
 
     test('parses deployed legacy_unverified null geography', () {
@@ -225,6 +298,40 @@ Map<String, dynamic> validatedNonInsideRow({required String status}) {
     'boundary_dataset_id': 'de8b4433-7315-5e60-8195-1d76744765eb',
     'geographically_validated_at': '2026-08-18T01:02:03.000Z',
   };
+}
+
+Map<String, dynamic> validatedInsideRow() {
+  return {
+    ...assessmentRow(),
+    'company_id': '10000000-0000-0000-0000-000000000001',
+    'site_location': {
+      'type': 'Point',
+      'coordinates': [116.0735, 5.9804],
+    },
+    'analysis_radius_km': 5,
+    'geographic_validation_status': 'inside',
+    'confirmed_territory': 'sabah',
+    'boundary_dataset_id': 'de8b4433-7315-5e60-8195-1d76744765eb',
+    'geographically_validated_at': '2026-08-18T01:02:03.000Z',
+    'validated_create_request_id': '73000000-0000-0000-0000-000000000001',
+  };
+}
+
+String ewkbPoint({
+  required double latitude,
+  required double longitude,
+  Endian endian = Endian.little,
+  int type = 0x20000001,
+  int srid = 4326,
+}) {
+  final bytes = Uint8List(25);
+  final data = ByteData.sublistView(bytes);
+  bytes[0] = endian == Endian.little ? 1 : 0;
+  data.setUint32(1, type, endian);
+  data.setUint32(5, srid, endian);
+  data.setFloat64(9, longitude, endian);
+  data.setFloat64(17, latitude, endian);
+  return bytes.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join();
 }
 
 Map<String, dynamic> assessmentRow() {

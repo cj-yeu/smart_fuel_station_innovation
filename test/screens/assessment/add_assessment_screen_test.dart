@@ -153,6 +153,7 @@ void main() {
     tester,
   ) async {
     var createCount = 0;
+    var requestIdGenerationCount = 0;
     StationAssessmentCreateInput? receivedInput;
 
     await pumpAddAssessment(
@@ -161,6 +162,10 @@ void main() {
         createCount++;
         receivedInput = input;
         return persistedAssessment;
+      },
+      requestIdGenerator: () {
+        requestIdGenerationCount++;
+        return firstRequestId;
       },
     );
     await enterValidForm(tester);
@@ -181,6 +186,7 @@ void main() {
     final input = receivedInput!;
 
     expect(createCount, 1);
+    expect(requestIdGenerationCount, 0);
     expect(input.locationName, 'Kota Kinabalu');
     expect(input.populationDensity, 1234.5);
     expect(input.trafficLevel, 3);
@@ -221,6 +227,7 @@ void main() {
         return persistedAssessment;
       },
       mapScreenBuilder: mapReturning(defaultInsideResult()),
+      requestIdGenerator: () => firstRequestId,
     );
 
     await selectInjectedSite(tester);
@@ -231,6 +238,7 @@ void main() {
     expect(validatedCreateCount, 1);
     expect(receivedInput!.validationResult.candidate.isValidatedInside, isTrue);
     expect(receivedInput!.content.locationName, 'Kota Kinabalu');
+    expect(receivedInput!.requestId, firstRequestId);
     expect(find.text('Assessment Result'), findsOneWidget);
   });
 
@@ -239,6 +247,8 @@ void main() {
   ) async {
     var validatedCreateCount = 0;
     var legacyCreateCount = 0;
+    final requestIds = <String>[];
+    var generatedRequestCount = 0;
 
     await pumpAddAssessment(
       tester,
@@ -246,14 +256,20 @@ void main() {
         legacyCreateCount++;
         return persistedAssessment;
       },
-      validatedCreator: (_) async {
+      validatedCreator: (input) async {
         validatedCreateCount++;
-        throw const PostgrestException(
-          message: 'Internal dataset replacement detail',
-          code: '40001',
-        );
+        requestIds.add(input.requestId);
+        if (validatedCreateCount == 1) {
+          throw const PostgrestException(
+            message: 'Internal dataset replacement detail',
+            code: '40001',
+          );
+        }
+        return persistedAssessment;
       },
       mapScreenBuilder: mapReturning(defaultInsideResult()),
+      requestIdGenerator: () =>
+          generatedRequestCount++ == 0 ? firstRequestId : secondRequestId,
     );
 
     await selectInjectedSite(tester);
@@ -316,6 +332,12 @@ void main() {
       tester.widget<Text>(retryError).data,
       'Please validate the selected site again before continuing.',
     );
+
+    await selectInjectedSite(tester);
+    await submitAssessment(tester);
+    expect(validatedCreateCount, 2);
+    expect(requestIds, [firstRequestId, secondRequestId]);
+    expect(find.text('Assessment Result'), findsOneWidget);
   });
 
   testWidgets('non-stale validated failure preserves validation for retry', (
@@ -323,6 +345,7 @@ void main() {
   ) async {
     var validatedCreateCount = 0;
     var legacyCreateCount = 0;
+    final requestIds = <String>[];
 
     await pumpAddAssessment(
       tester,
@@ -330,8 +353,9 @@ void main() {
         legacyCreateCount++;
         return persistedAssessment;
       },
-      validatedCreator: (_) async {
+      validatedCreator: (input) async {
         validatedCreateCount++;
+        requestIds.add(input.requestId);
         if (validatedCreateCount == 1) {
           throw const PostgrestException(
             message: 'Sensitive permission and ownership detail',
@@ -341,6 +365,7 @@ void main() {
         return persistedAssessment;
       },
       mapScreenBuilder: mapReturning(defaultInsideResult()),
+      requestIdGenerator: () => firstRequestId,
     );
 
     await selectInjectedSite(tester);
@@ -400,6 +425,77 @@ void main() {
 
     expect(validatedCreateCount, 2);
     expect(legacyCreateCount, 0);
+    expect(requestIds, [firstRequestId, firstRequestId]);
+    expect(find.text('Assessment Result'), findsOneWidget);
+  });
+
+  testWidgets('changed validated payload uses a new request ID', (
+    tester,
+  ) async {
+    final requestIds = <String>[];
+    var generatedRequestCount = 0;
+
+    await pumpAddAssessment(
+      tester,
+      creator: (_) async => persistedAssessment,
+      validatedCreator: (input) async {
+        requestIds.add(input.requestId);
+        if (requestIds.length == 1) {
+          throw StateError('retryable local response failure');
+        }
+        return persistedAssessment;
+      },
+      mapScreenBuilder: mapReturning(defaultInsideResult()),
+      requestIdGenerator: () =>
+          generatedRequestCount++ == 0 ? firstRequestId : secondRequestId,
+    );
+
+    await selectInjectedSite(tester);
+    await enterValidForm(tester);
+    await submitAssessment(tester);
+    await enterAssessmentField(
+      tester,
+      label: 'Location Name',
+      hint: 'Example: Setapak, Kuala Lumpur',
+      value: 'Changed Kota Kinabalu',
+    );
+    await submitAssessment(tester);
+
+    expect(requestIds, [firstRequestId, secondRequestId]);
+    expect(find.text('Assessment Result'), findsOneWidget);
+  });
+
+  testWidgets('pending validated creation suppresses duplicate submission', (
+    tester,
+  ) async {
+    final completer = Completer<StationAssessment>();
+    final requestIds = <String>[];
+
+    await pumpAddAssessment(
+      tester,
+      creator: (_) async => persistedAssessment,
+      validatedCreator: (input) {
+        requestIds.add(input.requestId);
+        return completer.future;
+      },
+      mapScreenBuilder: mapReturning(defaultInsideResult()),
+      requestIdGenerator: () => firstRequestId,
+    );
+    await selectInjectedSite(tester);
+    await enterValidForm(tester);
+
+    await submitAssessment(tester, waitForCompletion: false);
+
+    expect(requestIds, [firstRequestId]);
+    final button = tester.widget<ElevatedButton>(
+      find.byKey(const ValueKey('run-assessment-button')),
+    );
+    expect(button.onPressed, isNull);
+    await tester.pump();
+    expect(requestIds, [firstRequestId]);
+
+    completer.complete(persistedAssessment);
+    await tester.pumpAndSettle();
     expect(find.text('Assessment Result'), findsOneWidget);
   });
 
@@ -498,21 +594,7 @@ void main() {
 }
 
 Future<void> scrollAddAssessmentToTop(WidgetTester tester) async {
-  final scrollable = find
-      .descendant(
-        of: find.byType(AddAssessmentScreen),
-        matching: find.byWidgetPredicate(
-          (widget) =>
-              widget is Scrollable &&
-              (widget.axisDirection == AxisDirection.down ||
-                  widget.axisDirection == AxisDirection.up),
-        ),
-      )
-      .first;
-
-  final state = tester.state<ScrollableState>(scrollable);
-  state.position.jumpTo(state.position.minScrollExtent);
-  await tester.pumpAndSettle();
+  await scrollAssessmentFormToTop(tester);
 }
 
 Future<void> pumpAddAssessment(
@@ -520,16 +602,24 @@ Future<void> pumpAddAssessment(
   required AssessmentCreator creator,
   ValidatedAssessmentCreator? validatedCreator,
   AssessmentMapScreenBuilder? mapScreenBuilder,
-}) {
-  return tester.pumpWidget(
+  AssessmentRequestIdGenerator? requestIdGenerator,
+}) async {
+  tester.view.physicalSize = const Size(1200, 3000);
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+
+  await tester.pumpWidget(
     MaterialApp(
       home: AddAssessmentScreen(
         assessmentCreator: creator,
         validatedAssessmentCreator: validatedCreator,
         mapScreenBuilder: mapScreenBuilder,
+        requestIdGenerator: requestIdGenerator,
       ),
     ),
   );
+  await tester.pump();
 }
 
 AssessmentMapScreenBuilder mapReturning(
@@ -552,6 +642,11 @@ Future<void> selectInjectedSite(WidgetTester tester) async {
 Future<void> tapSelectSiteOnMap(WidgetTester tester) async {
   await scrollAssessmentFormToTop(tester);
   final button = find.text('Select Site on Map');
+  await ensureAssessmentTargetMounted(
+    tester,
+    button,
+    description: 'Select Site on Map button',
+  );
   expect(button, findsOneWidget);
   await tester.tap(button);
   await tester.pumpAndSettle();
@@ -588,12 +683,11 @@ Future<void> enterValidForm(WidgetTester tester) async {
     hint: 'Distance in kilometres',
     value: '4.25',
   );
-  await tester.scrollUntilVisible(
+  await ensureAssessmentTargetMounted(
+    tester,
     find.byKey(const ValueKey('run-assessment-button')),
-    300,
-    scrollable: assessmentFormScrollable,
+    description: 'run assessment button',
   );
-  await tester.pumpAndSettle();
 }
 
 Future<void> enterAssessmentField(
@@ -602,14 +696,14 @@ Future<void> enterAssessmentField(
   required String hint,
   required String value,
 }) async {
+  await scrollAssessmentFormToTop(tester);
   final field = assessmentField(label: label, hint: hint);
 
-  await tester.scrollUntilVisible(
+  await ensureAssessmentTargetMounted(
+    tester,
     field,
-    200,
-    scrollable: assessmentFormScrollable,
+    description: 'assessment field "$label"',
   );
-  await tester.pump();
   expect(field, findsOneWidget);
   await tester.enterText(field, value);
   await tester.pump();
@@ -621,14 +715,14 @@ Future<void> expectAssessmentFieldValue(
   required String hint,
   required String value,
 }) async {
+  await scrollAssessmentFormToTop(tester);
   final field = assessmentField(label: label, hint: hint);
 
-  await tester.scrollUntilVisible(
+  await ensureAssessmentTargetMounted(
+    tester,
     field,
-    200,
-    scrollable: assessmentFormScrollable,
+    description: 'assessment field "$label"',
   );
-  await tester.pump();
   expect(field, findsOneWidget);
   final textField = tester.widget<TextField>(field);
   expect(textField.controller, isNotNull);
@@ -648,21 +742,51 @@ Finder assessmentField({required String label, required String hint}) {
   );
 }
 
-Finder get assessmentFormScrollable => find.descendant(
-  of: find.byType(AddAssessmentScreen),
-  matching: find.byWidgetPredicate(
-    (widget) =>
-        widget is Scrollable && widget.axisDirection == AxisDirection.down,
-    description: 'vertical assessment form scrollable',
-  ),
-);
+Finder verticalAddAssessmentScrollable(WidgetTester tester) {
+  final scrollable = find.descendant(
+    of: find.byType(AddAssessmentScreen),
+    matching: find.byWidgetPredicate(
+      (widget) =>
+          widget is Scrollable && widget.axisDirection == AxisDirection.down,
+      description: 'vertical assessment form scrollable',
+    ),
+  );
+  expect(scrollable, findsOneWidget);
+  return scrollable;
+}
+
+Future<void> ensureAssessmentTargetMounted(
+  WidgetTester tester,
+  Finder target, {
+  required String description,
+}) async {
+  final scrollable = verticalAddAssessmentScrollable(tester);
+  final state = tester.state<ScrollableState>(scrollable);
+  state.position.jumpTo(state.position.minScrollExtent);
+  await tester.pump();
+
+  for (var attempt = 0; attempt < 8; attempt++) {
+    if (target.evaluate().isNotEmpty) {
+      return;
+    }
+
+    if (state.position.pixels >= state.position.maxScrollExtent) {
+      break;
+    }
+
+    await tester.drag(scrollable, const Offset(0, -240));
+    await tester.pump();
+  }
+
+  expect(target, findsOneWidget, reason: 'Could not mount $description');
+}
 
 Future<void> scrollAssessmentFormToTop(WidgetTester tester) async {
-  expect(assessmentFormScrollable, findsOneWidget);
+  FocusManager.instance.primaryFocus?.unfocus();
   tester.testTextInput.hide();
   await tester.pump();
   final scrollableState = tester.state<ScrollableState>(
-    assessmentFormScrollable,
+    verticalAddAssessmentScrollable(tester),
   );
   scrollableState.position.jumpTo(scrollableState.position.minScrollExtent);
   await tester.pump();
@@ -676,12 +800,12 @@ Future<void> submitAssessment(
   tester.testTextInput.hide();
   await tester.pump();
 
-  expect(assessmentFormScrollable, findsOneWidget);
-  final state = tester.state<ScrollableState>(assessmentFormScrollable);
-  state.position.jumpTo(state.position.maxScrollExtent);
-  await tester.pump();
-
   final buttonFinder = find.byKey(const ValueKey('run-assessment-button'));
+  await ensureAssessmentTargetMounted(
+    tester,
+    buttonFinder,
+    description: 'run assessment button',
+  );
   expect(buttonFinder, findsOneWidget);
 
   final button = tester.widget<ElevatedButton>(buttonFinder);
@@ -760,6 +884,8 @@ final persistedAssessment = StationAssessment(
 
 const firstDatasetId = '123e4567-e89b-12d3-a456-426614174000';
 const replacementDatasetId = '223e4567-e89b-12d3-a456-426614174000';
+const firstRequestId = '73000000-0000-0000-0000-000000000001';
+const secondRequestId = '73000000-0000-0000-0000-000000000002';
 
 EastMalaysiaSiteValidationResult insideResult({
   required GeoPoint point,

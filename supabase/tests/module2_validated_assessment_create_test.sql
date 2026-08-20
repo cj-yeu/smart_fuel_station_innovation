@@ -217,7 +217,8 @@ create function pg_temp.create_validated_assessment(
   p_suitability_category text,
   p_recommendation text,
   p_explanation text,
-  p_radius smallint
+  p_radius smallint,
+  p_request_id uuid
 )
 returns uuid
 language sql
@@ -241,7 +242,8 @@ as $module2_validated_create_test_call$
     gis.st_y(p_point),
     gis.st_x(p_point),
     p_radius,
-    p_dataset_id
+    p_dataset_id,
+    p_request_id
   )
 $module2_validated_create_test_call$;
 
@@ -268,7 +270,7 @@ begin
     v_temp_schema
   );
   execute pg_catalog.format(
-    'grant execute on function %I.create_validated_assessment(gis.geometry, uuid, text, numeric, integer, integer, integer, numeric, integer, integer, integer, integer, numeric, text, text, text, smallint) to authenticated',
+    'grant execute on function %I.create_validated_assessment(gis.geometry, uuid, text, numeric, integer, integer, integer, numeric, integer, integer, integer, integer, numeric, text, text, text, smallint, uuid) to authenticated',
     v_temp_schema
   );
   execute pg_catalog.format(
@@ -292,7 +294,7 @@ select pg_temp.assert_true(
 
 select pg_temp.assert_true(
   pg_catalog.to_regprocedure(
-    'public.create_validated_station_assessment(text,numeric,integer,integer,integer,numeric,integer,integer,integer,integer,numeric,text,text,text,double precision,double precision,smallint,uuid)'
+    'public.create_validated_station_assessment(text,numeric,integer,integer,integer,numeric,integer,integer,integer,integer,numeric,text,text,text,double precision,double precision,smallint,uuid,uuid)'
   ) is not null,
   'validated assessment create RPC must exist with the exact expected signature'
 );
@@ -370,7 +372,7 @@ select pg_temp.assert_true(
     from pg_catalog.pg_proc as procedure_entry
     cross join lateral unnest(procedure_entry.proargnames) as argument_name
     where procedure_entry.oid =
-      'public.create_validated_station_assessment(text,numeric,integer,integer,integer,numeric,integer,integer,integer,integer,numeric,text,text,text,double precision,double precision,smallint,uuid)'::regprocedure
+      'public.create_validated_station_assessment(text,numeric,integer,integer,integer,numeric,integer,integer,integer,integer,numeric,text,text,text,double precision,double precision,smallint,uuid,uuid)'::regprocedure
       and argument_name in (
         'user_id',
         'company_id',
@@ -475,7 +477,12 @@ begin
       v_case.suitability_category,
       v_case.recommendation,
       v_case.explanation,
-      v_case.analysis_radius_km
+      v_case.analysis_radius_km,
+      case v_case.territory
+        when 'labuan' then '71000000-0000-0000-0000-000000000001'::uuid
+        when 'sabah' then '71000000-0000-0000-0000-000000000002'::uuid
+        when 'sarawak' then '71000000-0000-0000-0000-000000000003'::uuid
+      end
     )
     into strict v_assessment_id;
 
@@ -670,7 +677,8 @@ begin
       v_point.suitability_category,
       v_point.recommendation,
       v_point.explanation,
-      v_point.analysis_radius_km
+      v_point.analysis_radius_km,
+      '71000000-0000-0000-0000-000000000004'::uuid
     );
     raise exception 'Expected outside validated create to fail';
   exception
@@ -714,7 +722,8 @@ begin
       v_point.suitability_category,
       v_point.recommendation,
       v_point.explanation,
-      v_point.analysis_radius_km
+      v_point.analysis_radius_km,
+      '71000000-0000-0000-0000-000000000005'::uuid
     );
     raise exception 'Expected stale dataset validated create to fail';
   exception
@@ -767,7 +776,8 @@ begin
         p_latitude => v_case.latitude::double precision,
         p_longitude => v_case.longitude::double precision,
         p_analysis_radius_km => v_case.radius::smallint,
-        p_expected_boundary_dataset_id => v_dataset_id::uuid
+        p_expected_boundary_dataset_id => v_dataset_id::uuid,
+        p_request_id => '71000000-0000-0000-0000-000000000006'::uuid
       );
       raise exception 'Expected % to fail', v_case.case_name;
     exception
@@ -969,7 +979,8 @@ begin
     p_longitude => 116::double precision,
     p_analysis_radius_km => 3::smallint,
     p_expected_boundary_dataset_id =>
-      '59000000-0000-0000-0000-000000000001'::uuid
+      '59000000-0000-0000-0000-000000000001'::uuid,
+    p_request_id => '71000000-0000-0000-0000-000000000007'::uuid
   );
   raise exception 'Expected no-company caller to fail';
 exception
@@ -1007,7 +1018,8 @@ begin
     p_longitude => 116::double precision,
     p_analysis_radius_km => 3::smallint,
     p_expected_boundary_dataset_id =>
-      '59000000-0000-0000-0000-000000000001'::uuid
+      '59000000-0000-0000-0000-000000000001'::uuid,
+    p_request_id => '71000000-0000-0000-0000-000000000008'::uuid
   );
   raise exception 'Expected missing-profile caller to fail';
 exception
@@ -1041,7 +1053,8 @@ begin
     p_longitude => 116::double precision,
     p_analysis_radius_km => 3::smallint,
     p_expected_boundary_dataset_id =>
-      '59000000-0000-0000-0000-000000000001'::uuid
+      '59000000-0000-0000-0000-000000000001'::uuid,
+    p_request_id => '71000000-0000-0000-0000-000000000009'::uuid
   );
   raise exception 'Expected anonymous caller to fail';
 exception
