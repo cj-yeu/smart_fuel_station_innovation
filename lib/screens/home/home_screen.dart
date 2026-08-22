@@ -5,7 +5,6 @@ import '../../models/user_profile.dart';
 import '../assessment/assessment_list_screen.dart';
 import '../evaluation/evaluation_list_screen.dart';
 import '../user/profile_screen.dart';
-import '../vehicle/vehicle_list_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final UserProfile profile;
@@ -135,19 +134,6 @@ class _HomeScreenState extends State<HomeScreen> {
             role: role,
           ),
           const SizedBox(height: 8),
-          dashboardCard(
-            icon: Icons.directions_car,
-            title: 'Vehicle Registration',
-            subtitle: 'Register and manage vehicle information',
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const VehicleListScreen(),
-                ),
-              );
-            },
-          ),
           dashboardCard(
             icon: Icons.analytics,
             title: 'AI Station Assessment',
