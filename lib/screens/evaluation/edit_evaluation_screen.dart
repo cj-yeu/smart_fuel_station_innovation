@@ -1,16 +1,23 @@
 import '../../models/business_evaluation.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../../models/official_fuel_price.dart';
 import '../../services/business_evaluation_service.dart';
+import '../../services/official_fuel_price_repository.dart';
 import 'evaluation_result_screen.dart';
+
+typedef EditOfficialFuelPriceLoader = Future<OfficialFuelPrice> Function();
 
 class EditEvaluationScreen extends StatefulWidget {
   final BusinessEvaluation evaluation;
+  final EditOfficialFuelPriceLoader? officialFuelPriceLoader;
 
   const EditEvaluationScreen({
     super.key,
     required this.evaluation,
+    this.officialFuelPriceLoader,
   });
 
   @override
@@ -31,7 +38,12 @@ class _EditEvaluationScreenState
   late final TextEditingController maintenanceController;
   late final TextEditingController otherCostController;
   late final TextEditingController investmentController;
+  late final EditOfficialFuelPriceLoader officialFuelPriceLoader;
 
+  OfficialFuelPrice? officialFuelPrice;
+  OfficialFuelProduct selectedFuelProduct = OfficialFuelProduct.ron95;
+  bool isLoadingOfficialFuelPrice = true;
+  bool officialFuelPriceUnavailable = false;
   bool isSaving = false;
 
   @override
@@ -39,6 +51,8 @@ class _EditEvaluationScreenState
     super.initState();
 
     final evaluation = widget.evaluation;
+    officialFuelPriceLoader =
+        widget.officialFuelPriceLoader ?? OfficialFuelPriceRepository().loadLatest;
 
     stationNameController = TextEditingController(
       text: evaluation.stationName,
@@ -83,6 +97,41 @@ class _EditEvaluationScreenState
     investmentController = TextEditingController(
       text: evaluation.initialInvestment.toString(),
     );
+    loadOfficialFuelPrice();
+  }
+
+  Future<void> loadOfficialFuelPrice() async {
+    setState(() {
+      isLoadingOfficialFuelPrice = true;
+      officialFuelPriceUnavailable = false;
+    });
+
+    try {
+      final loadedPrice = await officialFuelPriceLoader();
+      if (!mounted) return;
+      setState(() {
+        officialFuelPrice = loadedPrice;
+        isLoadingOfficialFuelPrice = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        isLoadingOfficialFuelPrice = false;
+        officialFuelPriceUnavailable = true;
+      });
+    }
+  }
+
+  double get _selectedOfficialPrice {
+    final price = officialFuelPrice;
+    if (price == null) {
+      throw StateError('Official fuel price is unavailable.');
+    }
+    return price.priceFor(selectedFuelProduct);
+  }
+
+  void useOfficialPrice() {
+    fuelPriceController.text = _selectedOfficialPrice.toStringAsFixed(2);
   }
 
   Future<void> runEvaluation() async {
@@ -134,6 +183,20 @@ class _EditEvaluationScreenState
         investment < 0) {
       showMessage(
         'Values cannot be negative',
+        isError: true,
+      );
+      return;
+    }
+
+    if (![fuelPrice, fuelCost, averageLitres, rental, salary, utilities,
+          maintenance, otherCost, investment].every((value) => value.isFinite)) {
+      showMessage('Values must be finite numbers', isError: true);
+      return;
+    }
+
+    if (fuelPrice <= fuelCost) {
+      showMessage(
+        'Selling price must be greater than purchase cost',
         isError: true,
       );
       return;
@@ -205,13 +268,16 @@ class _EditEvaluationScreenState
       if (completed == true) {
         Navigator.pop(context, true);
       }
-    } on PostgrestException catch (error) {
-      if (!mounted) return;
-      showMessage(error.message, isError: true);
-    } catch (error) {
+    } on PostgrestException {
       if (!mounted) return;
       showMessage(
-        'Unable to complete evaluation. Please try again.',
+        'Unable to update the evaluation. Please try again.',
+        isError: true,
+      );
+    } catch (_) {
+      if (!mounted) return;
+      showMessage(
+        'Unable to update the evaluation. Please try again.',
         isError: true,
       );
     } finally {
@@ -257,7 +323,7 @@ class _EditEvaluationScreenState
     return Scaffold(
       backgroundColor: const Color(0xFFF4F7F6),
       appBar: AppBar(
-        title: const Text('Update Business Evaluation'),
+        title: const Text('Update Profitability Evaluation'),
         backgroundColor: const Color(0xFF168C4B),
         foregroundColor: Colors.white,
       ),
@@ -271,6 +337,7 @@ class _EditEvaluationScreenState
             hint: 'Example: Setapak Smart Fuel Station',
             icon: Icons.local_gas_station,
           ),
+          officialFuelPriceCard(),
           inputField(
             controller: fuelPriceController,
             label: 'Selling Price per Litre (RM)',
@@ -364,7 +431,7 @@ class _EditEvaluationScreenState
             )
                 : const Icon(Icons.calculate),
             label: Text(
-                isSaving ? 'Re-evaluating...' : 'Recalculate Evaluation',
+                isSaving ? 'Calculating...' : 'Calculate Profitability',
               style: const TextStyle(fontSize: 16),
             ),
           ),
@@ -387,6 +454,127 @@ class _EditEvaluationScreenState
         ),
       ),
     );
+  }
+
+  Widget officialFuelPriceCard() {
+    final price = officialFuelPrice;
+    return Card(
+      margin: const EdgeInsets.only(bottom: 16),
+      color: const Color(0xFFE8F5EE),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Official Weekly Fuel Price',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            DropdownButtonFormField<OfficialFuelProduct>(
+              value: selectedFuelProduct,
+              decoration: const InputDecoration(
+                labelText: 'Fuel Product',
+                isDense: true,
+              ),
+              items: OfficialFuelProduct.values
+                  .map(
+                    (product) => DropdownMenuItem(
+                      value: product,
+                      child: Text(product.displayLabel),
+                    ),
+                  )
+                  .toList(growable: false),
+              onChanged: (product) {
+                if (product != null) {
+                  setState(() => selectedFuelProduct = product);
+                }
+              },
+            ),
+            const SizedBox(height: 8),
+            if (isLoadingOfficialFuelPrice)
+              const Row(
+                children: [
+                  SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                  SizedBox(width: 10),
+                  Text('Loading official weekly price...'),
+                ],
+              )
+            else if (officialFuelPriceUnavailable)
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Official fuel price is currently unavailable.'),
+                  const Text('Enter the selling price manually.'),
+                  TextButton.icon(
+                    onPressed: loadOfficialFuelPrice,
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Retry'),
+                  ),
+                ],
+              )
+            else if (price != null)
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Official weekly retail price: RM '
+                    '${_selectedOfficialPrice.toStringAsFixed(2)} / litre',
+                  ),
+                  Text('Effective: ${_formatEffectiveDate(price.effectiveDate)}'),
+                  TextButton(
+                    onPressed: _openOfficialSource,
+                    child: const Text(
+                      'Fuel price source: Ministry of Finance Malaysia via data.gov.my',
+                    ),
+                  ),
+                  const Text('Weekly official retail price data.'),
+                  const Text('Manual override is allowed for scenario analysis.'),
+                  const SizedBox(height: 4),
+                  OutlinedButton(
+                    onPressed: useOfficialPrice,
+                    child: const Text('Use Official Price'),
+                  ),
+                ],
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openOfficialSource() async {
+    try {
+      await launchUrl(
+        Uri.parse('https://data.gov.my/data-catalogue/fuelprice'),
+        mode: LaunchMode.externalApplication,
+      );
+    } catch (_) {
+      // Attribution remains visible even when the host cannot open a browser.
+    }
+  }
+
+  String _formatEffectiveDate(DateTime date) {
+    const monthNames = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    return '${date.day.toString().padLeft(2, '0')} '
+        '${monthNames[date.month - 1]} ${date.year}';
   }
 
   Widget inputField({

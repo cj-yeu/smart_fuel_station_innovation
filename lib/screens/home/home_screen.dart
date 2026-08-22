@@ -125,7 +125,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const SizedBox(height: 8),
           const Text(
-            'Manage fuel station planning with AI assessment and business evaluation.',
+            'Manage fuel station planning with site assessment and profitability evaluation.',
             style: TextStyle(color: Colors.black54),
           ),
           const SizedBox(height: 20),
@@ -163,7 +163,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           dashboardCard(
             icon: Icons.bar_chart,
-            title: 'AI Business Evaluation',
+            title: 'Profitability Evaluation',
             subtitle: 'Estimate revenue, cost, profit and ROI',
             onTap: () {
               Navigator.push(

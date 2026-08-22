@@ -33,7 +33,7 @@ class EvaluationResultScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: const Color(0xFFF4F7F6),
       appBar: AppBar(
-        title: const Text('Business Evaluation'),
+        title: const Text('Profitability Evaluation'),
         backgroundColor: const Color(0xFF168C4B),
         foregroundColor: Colors.white,
       ),
@@ -65,9 +65,17 @@ class EvaluationResultScreen extends StatelessWidget {
           ),
           informationCard(
             icon: Icons.psychology,
-            title: 'AI Explanation',
+            title: 'Evaluation Explanation',
             content: result.explanation,
             color: const Color(0xFF168C4B),
+          ),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 8),
+            child: Text(
+              'Estimates are for decision-support purposes and depend on the assumptions entered.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.black54, fontSize: 12),
+            ),
           ),
           const SizedBox(height: 6),
           ElevatedButton.icon(
@@ -171,7 +179,7 @@ class EvaluationResultScreen extends StatelessWidget {
         metricCard(
           'Break-even',
           result.breakEvenMonths == null
-              ? 'Not achievable'
+              ? 'Not currently profitable'
               : '${result.breakEvenMonths!.toStringAsFixed(1)} months',
           Icons.schedule,
         ),

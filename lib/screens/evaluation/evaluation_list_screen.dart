@@ -138,12 +138,12 @@ class _EvaluationListScreenState
       });
 
       await loadEvaluations();
-    } on PostgrestException catch (error) {
+    } on PostgrestException {
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(error.message),
+          content: Text('Unable to delete the evaluation. Please try again.'),
           backgroundColor: Colors.red,
         ),
       );
