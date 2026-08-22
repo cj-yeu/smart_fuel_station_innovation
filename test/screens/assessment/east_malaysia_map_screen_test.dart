@@ -5,6 +5,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smart_fuell_station_innovation/models/assessment_site_candidate.dart';
 import 'package:smart_fuell_station_innovation/models/east_malaysia_site_validation_result.dart';
+import 'package:smart_fuell_station_innovation/models/east_malaysia_map_selection.dart';
 import 'package:smart_fuell_station_innovation/models/east_malaysia_territory.dart';
 import 'package:smart_fuell_station_innovation/models/geo_point.dart';
 import 'package:smart_fuell_station_innovation/screens/assessment/east_malaysia_map_screen.dart';
@@ -227,7 +228,7 @@ void main() {
       point: firstPoint,
       territory: EastMalaysiaTerritory.sabah,
     );
-    EastMalaysiaSiteValidationResult? returnedResult;
+    EastMalaysiaMapSelection? returnedResult;
 
     await pumpMapRoute(
       tester,
@@ -243,8 +244,9 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('use-candidate-button')));
     await tester.pumpAndSettle();
 
-    expect(returnedResult, same(expectedResult));
-    expect(returnedResult!.boundaryDatasetId, datasetId);
+    expect(returnedResult!.validationResult, same(expectedResult));
+    expect(returnedResult!.validationResult.boundaryDatasetId, datasetId);
+    expect(returnedResult!.nearbyFuelStations, isNull);
   });
 
   final rejectedStatuses =
@@ -378,7 +380,8 @@ void main() {
       radius: 10,
       territory: EastMalaysiaTerritory.sarawak,
     );
-    EastMalaysiaSiteValidationResult? returnedResult = initialResult;
+    EastMalaysiaMapSelection? returnedResult =
+        EastMalaysiaMapSelection(validationResult: initialResult);
 
     await pumpMapRoute(
       tester,
@@ -469,11 +472,15 @@ Future<void> pumpMapScreen(
   required EastMalaysiaSiteValidator validator,
   EastMalaysiaMapContentBuilder? mapContentBuilder,
   EastMalaysiaSiteValidationResult? initialValidationResult,
+  NearbyFuelStationLoader? nearbyFuelStationLoader,
 }) {
   return tester.pumpWidget(
     MaterialApp(
       home: EastMalaysiaMapScreen(
-        validator: validator,
+          validator: validator,
+          nearbyFuelStationLoader:
+              nearbyFuelStationLoader ??
+              (_) async => throw StateError('No station loader configured.'),
         initialValidationResult: initialValidationResult,
         mapContentBuilder:
             mapContentBuilder ??
@@ -497,8 +504,9 @@ Future<void> pumpMapRoute(
   WidgetTester tester, {
   required EastMalaysiaSiteValidator validator,
   required EastMalaysiaMapContentBuilder mapContentBuilder,
-  required ValueChanged<EastMalaysiaSiteValidationResult?> onReturned,
+  required ValueChanged<EastMalaysiaMapSelection?> onReturned,
   EastMalaysiaSiteValidationResult? initialValidationResult,
+  NearbyFuelStationLoader? nearbyFuelStationLoader,
 }) {
   return tester.pumpWidget(
     MaterialApp(
@@ -506,6 +514,7 @@ Future<void> pumpMapRoute(
         validator: validator,
         mapContentBuilder: mapContentBuilder,
         initialValidationResult: initialValidationResult,
+        nearbyFuelStationLoader: nearbyFuelStationLoader,
         onReturned: onReturned,
       ),
     ),
@@ -516,12 +525,14 @@ class _MapRouteHost extends StatelessWidget {
   final EastMalaysiaSiteValidator validator;
   final EastMalaysiaMapContentBuilder mapContentBuilder;
   final EastMalaysiaSiteValidationResult? initialValidationResult;
-  final ValueChanged<EastMalaysiaSiteValidationResult?> onReturned;
+  final ValueChanged<EastMalaysiaMapSelection?> onReturned;
+  final NearbyFuelStationLoader? nearbyFuelStationLoader;
 
   const _MapRouteHost({
     required this.validator,
     required this.mapContentBuilder,
     required this.initialValidationResult,
+    this.nearbyFuelStationLoader,
     required this.onReturned,
   });
 
@@ -532,13 +543,17 @@ class _MapRouteHost extends StatelessWidget {
         child: ElevatedButton(
           onPressed: () async {
             final result =
-                await Navigator.push<EastMalaysiaSiteValidationResult>(
+                await Navigator.push<EastMalaysiaMapSelection>(
                   context,
                   MaterialPageRoute(
                     builder: (context) => EastMalaysiaMapScreen(
                       validator: validator,
                       mapContentBuilder: mapContentBuilder,
                       initialValidationResult: initialValidationResult,
+                      nearbyFuelStationLoader:
+                          nearbyFuelStationLoader ??
+                          (_) async =>
+                              throw StateError('No station loader configured.'),
                     ),
                   ),
                 );

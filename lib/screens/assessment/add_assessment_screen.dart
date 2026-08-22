@@ -3,6 +3,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../models/east_malaysia_site_validation_result.dart';
+import '../../models/east_malaysia_map_selection.dart';
+import '../../models/nearby_fuel_station_result.dart';
 import '../../models/station_assessment.dart';
 import '../../models/station_assessment_create_input.dart';
 import '../../models/station_assessment_validated_create_input.dart';
@@ -61,6 +63,7 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
   bool requiresSiteRevalidation = false;
   String? submissionErrorMessage;
   EastMalaysiaSiteValidationResult? selectedSiteValidationResult;
+  NearbyFuelStationResult? selectedNearbyFuelStationResult;
   String? validatedRequestId;
   String? validatedPayloadFingerprint;
 
@@ -197,6 +200,7 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
       if (error.code == '40001' && selectedSiteValidationResult != null) {
         setState(() {
           selectedSiteValidationResult = null;
+          selectedNearbyFuelStationResult = null;
           requiresSiteRevalidation = true;
           validatedRequestId = null;
           validatedPayloadFingerprint = null;
@@ -235,7 +239,7 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
 
   Future<void> selectSiteOnMap() async {
     final selectedResult =
-        await Navigator.push<EastMalaysiaSiteValidationResult>(
+        await Navigator.push<Object?>(
           context,
           MaterialPageRoute(
             builder: (context) =>
@@ -244,17 +248,39 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
                   selectedSiteValidationResult,
                 ) ??
                 EastMalaysiaMapScreen(
-                  initialValidationResult: selectedSiteValidationResult,
+                  initialSelection: selectedSiteValidationResult == null
+                      ? null
+                      : EastMalaysiaMapSelection(
+                          validationResult: selectedSiteValidationResult!,
+                          nearbyFuelStations: selectedNearbyFuelStationResult,
+                        ),
                 ),
           ),
         );
 
     if (!mounted || selectedResult == null) return;
+    final selection = switch (selectedResult) {
+      EastMalaysiaMapSelection selection => selection,
+      // Kept only for injected legacy test builders during this UI transition.
+      EastMalaysiaSiteValidationResult validationResult =>
+        EastMalaysiaMapSelection(validationResult: validationResult),
+      _ => null,
+    };
+    if (selection == null) return;
     setState(() {
-      selectedSiteValidationResult = selectedResult;
+      selectedSiteValidationResult = selection.validationResult;
+      selectedNearbyFuelStationResult = selection.nearbyFuelStations;
+      _applyNearbyFuelStationAutofill(selection.nearbyFuelStations);
       requiresSiteRevalidation = false;
       submissionErrorMessage = null;
     });
+  }
+
+  void _applyNearbyFuelStationAutofill(NearbyFuelStationResult? result) {
+    if (result == null) return;
+    nearbyStationsController.text = result.stationCount.toString();
+    competitorDistanceController.text =
+        (result.nearestDistanceKm ?? 0).toStringAsFixed(2);
   }
 
   @override
