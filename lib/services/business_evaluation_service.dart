@@ -41,6 +41,29 @@ class BusinessEvaluationService {
     required double monthlyOtherCost,
     required double initialInvestment,
   }) {
+    final numericInputs = [
+      fuelPrice,
+      fuelPurchaseCost,
+      averageLitres,
+      monthlyRental,
+      monthlyStaffSalary,
+      monthlyUtilities,
+      monthlyMaintenance,
+      monthlyOtherCost,
+      initialInvestment,
+    ];
+    if (numericInputs.any((value) => !value.isFinite)) {
+      throw ArgumentError('Evaluation inputs must be finite numbers.');
+    }
+    if (dailyCustomers < 0 || numericInputs.any((value) => value < 0)) {
+      throw ArgumentError('Evaluation inputs cannot be negative.');
+    }
+    if (fuelPrice <= fuelPurchaseCost) {
+      throw ArgumentError(
+        'Selling price must be greater than purchase cost.',
+      );
+    }
+
     final monthlySalesVolume =
         dailyCustomers * averageLitres * 30;
 
@@ -73,10 +96,24 @@ class BusinessEvaluationService {
         ? 0.0
         : (annualProfit / initialInvestment) * 100;
 
+    _requireFiniteCalculatedValues([
+      monthlySalesVolume,
+      monthlyRevenue,
+      monthlyFuelCost,
+      monthlyOperatingCost,
+      monthlyProfit,
+      profitMargin,
+      annualProfit,
+      roi,
+    ]);
+
     final double? breakEvenMonths =
     monthlyProfit > 0 && initialInvestment > 0
         ? initialInvestment / monthlyProfit
         : null;
+    if (breakEvenMonths != null && !breakEvenMonths.isFinite) {
+      throw ArgumentError('Evaluation results must be finite numbers.');
+    }
 
     final marginScore =
     ((profitMargin / 20) * 100)
@@ -167,7 +204,7 @@ class BusinessEvaluationService {
     required double? breakEvenMonths,
   }) {
     final breakEvenText = breakEvenMonths == null
-        ? 'The initial investment cannot be recovered under the current assumptions.'
+        ? 'The station is not currently profitable under the current assumptions.'
         : 'The estimated break-even period is '
         '${breakEvenMonths.toStringAsFixed(1)} months.';
 
@@ -180,6 +217,15 @@ class BusinessEvaluationService {
   }
 
   static double _round(double value) {
+    if (!value.isFinite) {
+      throw ArgumentError('Evaluation results must be finite numbers.');
+    }
     return double.parse(value.toStringAsFixed(2));
+  }
+
+  static void _requireFiniteCalculatedValues(Iterable<double> values) {
+    if (values.any((value) => !value.isFinite)) {
+      throw ArgumentError('Evaluation results must be finite numbers.');
+    }
   }
 }
