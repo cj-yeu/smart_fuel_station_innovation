@@ -49,11 +49,12 @@ class NearbyFuelStationResult {
     if (stationCount == 0 && nearestDistanceKm != null) {
       throw ArgumentError('An empty result must not have a nearest distance.');
     }
+    final nearestDistance = nearestDistanceKm;
     if (stationCount > 0 &&
-        (nearestDistanceKm == null ||
-            !nearestDistanceKm.isFinite ||
-            nearestDistanceKm < 0 ||
-            nearestDistanceKm != stations.first.distanceKm)) {
+        (nearestDistance == null ||
+            !nearestDistance.isFinite ||
+            nearestDistance < 0 ||
+            nearestDistance != stations.first.distanceKm)) {
       throw ArgumentError(
         'A non-empty result requires its nearest station distance.',
       );

@@ -7,23 +7,39 @@ typedef NearbyFuelStationFunctionCaller =
     Future<dynamic> Function(String functionName, Map<String, dynamic> body);
 typedef NearbyFuelStationSessionProvider = bool Function();
 
-class NearbyFuelStationRepository {
+abstract class NearbyFuelStationRepository {
   static const functionName = 'nearby-fuel-stations';
 
-  final SupabaseClient _client;
-  final NearbyFuelStationFunctionCaller? _functionCaller;
-  final NearbyFuelStationSessionProvider? _sessionProvider;
-
-  const NearbyFuelStationRepository(
-    this._client, {
+  factory NearbyFuelStationRepository(
+    SupabaseClient client, {
     NearbyFuelStationFunctionCaller? functionCaller,
     NearbyFuelStationSessionProvider? sessionProvider,
-  }) : _functionCaller = functionCaller,
-       _sessionProvider = sessionProvider;
+  }) => _NearbyFuelStationRepository(
+    client,
+    functionCaller,
+    sessionProvider,
+  );
 
   /// Loads public OSM fuel-station context for an already authoritative inside
   /// result. The Edge Function independently revalidates the caller and site;
   /// this client never supplies company membership or territory authority.
+  Future<NearbyFuelStationResult> fetchForValidatedSite(
+    EastMalaysiaSiteValidationResult validationResult,
+  );
+}
+
+class _NearbyFuelStationRepository implements NearbyFuelStationRepository {
+  final SupabaseClient _client;
+  final NearbyFuelStationFunctionCaller? _functionCaller;
+  final NearbyFuelStationSessionProvider? _sessionProvider;
+
+  const _NearbyFuelStationRepository(
+    this._client,
+    this._functionCaller,
+    this._sessionProvider,
+  );
+
+  @override
   Future<NearbyFuelStationResult> fetchForValidatedSite(
     EastMalaysiaSiteValidationResult validationResult,
   ) async {
@@ -42,7 +58,10 @@ class NearbyFuelStationRepository {
       'longitude': candidate.point.longitude,
       'analysis_radius_km': candidate.analysisRadiusKm.toInt(),
     };
-    final response = await (_functionCaller?.call(functionName, body) ??
+    final response = await (_functionCaller?.call(
+          NearbyFuelStationRepository.functionName,
+          body,
+        ) ??
         _invokeProductionFunction(body));
     if (response is! Map) {
       throw StateError('Nearby fuel-stations returned an invalid response.');
@@ -56,7 +75,10 @@ class NearbyFuelStationRepository {
   }
 
   Future<dynamic> _invokeProductionFunction(Map<String, dynamic> body) async {
-    final response = await _client.functions.invoke(functionName, body: body);
+    final response = await _client.functions.invoke(
+      NearbyFuelStationRepository.functionName,
+      body: body,
+    );
     return response.data;
   }
 }

@@ -222,6 +222,7 @@ class _EastMalaysiaMapScreenState extends State<EastMalaysiaMapScreen> {
   NearbyFuelStationLoader? _productionNearbyFuelStationLoader;
   bool isValidating = false;
   bool isLoadingNearbyFuelStations = false;
+  bool showAllNearbyFuelStations = false;
   String? validationError;
   String? nearbyFuelStationError;
 
@@ -279,6 +280,7 @@ class _EastMalaysiaMapScreenState extends State<EastMalaysiaMapScreen> {
       validationError = null;
       nearbyFuelStationResult = null;
       nearbyFuelStationError = null;
+      showAllNearbyFuelStations = false;
     });
   }
 
@@ -290,6 +292,7 @@ class _EastMalaysiaMapScreenState extends State<EastMalaysiaMapScreen> {
       validationError = null;
       nearbyFuelStationResult = null;
       nearbyFuelStationError = null;
+      showAllNearbyFuelStations = false;
     });
   }
 
@@ -313,6 +316,7 @@ class _EastMalaysiaMapScreenState extends State<EastMalaysiaMapScreen> {
         validationResult = result;
         selectedPoint = result.candidate.point;
         selectedRadiusKm = result.candidate.analysisRadiusKm;
+        showAllNearbyFuelStations = false;
       });
       if (result.candidate.isValidatedInside) {
         await loadNearbyFuelStations(result);
@@ -437,6 +441,9 @@ class _EastMalaysiaMapScreenState extends State<EastMalaysiaMapScreen> {
     final stations = nearbyFuelStationResult;
     if (stations == null) return const SizedBox.shrink();
     final nearest = stations.nearestDistanceKm;
+    final visibleStations = showAllNearbyFuelStations
+        ? stations.stations
+        : stations.stations.take(5).toList(growable: false);
     return Padding(
       padding: const EdgeInsets.only(top: 8),
       child: DecoratedBox(
@@ -455,11 +462,41 @@ class _EastMalaysiaMapScreenState extends State<EastMalaysiaMapScreen> {
                     ? 'Nearest competitor: none within the analysis radius'
                     : 'Nearest competitor: ${nearest.toStringAsFixed(2)} km',
               ),
-              for (final station in stations.stations)
-                Text(
-                  '${station.name ?? station.brand ?? station.operatorName ?? 'Unnamed station'} '
-                  '(${station.distanceKm.toStringAsFixed(2)} km)',
-                  textAlign: TextAlign.center,
+              if (visibleStations.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                SizedBox(
+                  height: 120,
+                  child: ListView.separated(
+                    key: const ValueKey('nearby-fuel-stations-list'),
+                    primary: false,
+                    itemCount: visibleStations.length,
+                    separatorBuilder: (_, _) => const Divider(height: 1),
+                    itemBuilder: (context, index) {
+                      final station = visibleStations[index];
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 5),
+                        child: Text(
+                          '${station.name ?? station.brand ?? station.operatorName ?? 'Unnamed station'} '
+                          '(${station.distanceKm.toStringAsFixed(2)} km)',
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+              if (stations.stationCount > 5)
+                TextButton(
+                  key: const ValueKey('toggle-nearby-fuel-stations-button'),
+                  onPressed: () {
+                    setState(() {
+                      showAllNearbyFuelStations = !showAllNearbyFuelStations;
+                    });
+                  },
+                  child: Text(
+                    showAllNearbyFuelStations
+                        ? 'Show less'
+                        : 'View all stations (${stations.stationCount})',
+                  ),
                 ),
             ],
           ),
@@ -520,9 +557,17 @@ class _EastMalaysiaMapScreenState extends State<EastMalaysiaMapScreen> {
                   onPointSelected: selectPoint,
                 ),
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-            child: Column(
+          SafeArea(
+            top: false,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.sizeOf(context).height * 0.5,
+              ),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 if (currentCandidate == null)
@@ -628,6 +673,8 @@ class _EastMalaysiaMapScreenState extends State<EastMalaysiaMapScreen> {
                   ],
                 ),
               ],
+                ),
+              ),
             ),
           ),
         ],

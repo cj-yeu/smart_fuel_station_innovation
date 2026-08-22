@@ -280,7 +280,7 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
     if (result == null) return;
     nearbyStationsController.text = result.stationCount.toString();
     competitorDistanceController.text =
-        result.nearestDistanceKm?.toString() ?? '0';
+        (result.nearestDistanceKm ?? 0).toStringAsFixed(2);
   }
 
   @override
