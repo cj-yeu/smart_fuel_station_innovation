@@ -5,6 +5,7 @@ import 'package:uuid/uuid.dart';
 import '../../models/east_malaysia_site_validation_result.dart';
 import '../../models/east_malaysia_map_selection.dart';
 import '../../models/nearby_fuel_station_result.dart';
+import '../../models/site_factor_intelligence_result.dart';
 import '../../models/station_assessment.dart';
 import '../../models/station_assessment_create_input.dart';
 import '../../models/station_assessment_validated_create_input.dart';
@@ -64,6 +65,7 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
   String? submissionErrorMessage;
   EastMalaysiaSiteValidationResult? selectedSiteValidationResult;
   NearbyFuelStationResult? selectedNearbyFuelStationResult;
+  SiteFactorIntelligenceResult? selectedSiteFactorIntelligenceResult;
   String? validatedRequestId;
   String? validatedPayloadFingerprint;
 
@@ -201,6 +203,7 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
         setState(() {
           selectedSiteValidationResult = null;
           selectedNearbyFuelStationResult = null;
+          selectedSiteFactorIntelligenceResult = null;
           requiresSiteRevalidation = true;
           validatedRequestId = null;
           validatedPayloadFingerprint = null;
@@ -238,25 +241,26 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
   }
 
   Future<void> selectSiteOnMap() async {
-    final selectedResult =
-        await Navigator.push<Object?>(
-          context,
-          MaterialPageRoute(
-            builder: (context) =>
-                widget.mapScreenBuilder?.call(
-                  context,
-                  selectedSiteValidationResult,
-                ) ??
-                EastMalaysiaMapScreen(
-                  initialSelection: selectedSiteValidationResult == null
-                      ? null
-                      : EastMalaysiaMapSelection(
-                          validationResult: selectedSiteValidationResult!,
-                          nearbyFuelStations: selectedNearbyFuelStationResult,
-                        ),
-                ),
-          ),
-        );
+    final selectedResult = await Navigator.push<Object?>(
+      context,
+      MaterialPageRoute(
+        builder: (context) =>
+            widget.mapScreenBuilder?.call(
+              context,
+              selectedSiteValidationResult,
+            ) ??
+            EastMalaysiaMapScreen(
+              initialSelection: selectedSiteValidationResult == null
+                  ? null
+                  : EastMalaysiaMapSelection(
+                      validationResult: selectedSiteValidationResult!,
+                      nearbyFuelStations: selectedNearbyFuelStationResult,
+                      siteFactorIntelligence:
+                          selectedSiteFactorIntelligenceResult,
+                    ),
+            ),
+      ),
+    );
 
     if (!mounted || selectedResult == null) return;
     final selection = switch (selectedResult) {
@@ -270,6 +274,7 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
     setState(() {
       selectedSiteValidationResult = selection.validationResult;
       selectedNearbyFuelStationResult = selection.nearbyFuelStations;
+      selectedSiteFactorIntelligenceResult = selection.siteFactorIntelligence;
       _applyNearbyFuelStationAutofill(selection.nearbyFuelStations);
       requiresSiteRevalidation = false;
       submissionErrorMessage = null;
@@ -279,9 +284,302 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
   void _applyNearbyFuelStationAutofill(NearbyFuelStationResult? result) {
     if (result == null) return;
     nearbyStationsController.text = result.stationCount.toString();
-    competitorDistanceController.text =
-        (result.nearestDistanceKm ?? 0).toStringAsFixed(2);
+    competitorDistanceController.text = (result.nearestDistanceKm ?? 0)
+        .toStringAsFixed(2);
   }
+
+  void applyAllSiteFactorSuggestions() {
+    final intelligence = selectedSiteFactorIntelligenceResult;
+    if (intelligence == null) return;
+    setState(() {
+      _applyPopulationSuggestion(intelligence.population);
+      _applyVehicleSuggestion(intelligence.vehicleDemand);
+      _applyScoreSuggestion(
+        intelligence.roadAccessibility.suggestedScore,
+        (value) => roadAccessibility = value,
+      );
+      _applyScoreSuggestion(
+        intelligence.commercialActivity.suggestedScore,
+        (value) => commercialActivity = value,
+      );
+      _applyScoreSuggestion(
+        intelligence.residentialActivity.suggestedScore,
+        (value) => residentialActivity = value,
+      );
+      _applyScoreSuggestion(
+        intelligence.landAccessibility.suggestedScore,
+        (value) => landAccessibility = value,
+      );
+    });
+  }
+
+  void _applyPopulationSuggestion(PopulationEvidence population) {
+    if (!population.hasUsableSuggestion) return;
+    populationController.text = population.densityPerSqKm!.toStringAsFixed(2);
+  }
+
+  void _applyVehicleSuggestion(VehicleDemandProxy vehicleDemand) {
+    if (!vehicleDemand.hasUsableSuggestion) return;
+    vehicleCountController.text = vehicleDemand.value.toString();
+  }
+
+  void _applyScoreSuggestion(int? score, ValueChanged<int> apply) {
+    if (score == null || score < 1 || score > 5) return;
+    apply(score);
+  }
+
+  Widget buildSiteDataSuggestionsPanel() {
+    final intelligence = selectedSiteFactorIntelligenceResult;
+    if (intelligence == null) return const SizedBox.shrink();
+
+    final hasAnySuggestion =
+        intelligence.population.hasUsableSuggestion ||
+        intelligence.vehicleDemand.hasUsableSuggestion ||
+        intelligence.roadAccessibility.hasUsableSuggestion ||
+        intelligence.commercialActivity.hasUsableSuggestion ||
+        intelligence.residentialActivity.hasUsableSuggestion ||
+        intelligence.landAccessibility.hasUsableSuggestion;
+
+    return Card(
+      key: const ValueKey('site-data-suggestions-panel'),
+      margin: const EdgeInsets.only(top: 12),
+      color: const Color(0xFFE8F1FC),
+      child: ExpansionTile(
+        title: const Text('Site Data Suggestions'),
+        subtitle: const Text('Review evidence before applying any value.'),
+        childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+        children: [
+          if (hasAnySuggestion)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: ElevatedButton.icon(
+                key: const ValueKey('use-all-site-factor-suggestions-button'),
+                onPressed: isSaving ? null : applyAllSiteFactorSuggestions,
+                icon: const Icon(Icons.playlist_add_check),
+                label: const Text('Use All Available Suggestions'),
+              ),
+            ),
+          if (hasAnySuggestion) const SizedBox(height: 8),
+          buildPopulationSuggestion(intelligence.population),
+          buildVehicleDemandSuggestion(intelligence.vehicleDemand),
+          buildRoadSuggestion(intelligence.roadAccessibility),
+          buildCommercialSuggestion(intelligence.commercialActivity),
+          buildResidentialSuggestion(intelligence.residentialActivity),
+          buildLandSuggestion(intelligence.landAccessibility),
+          const Padding(
+            padding: EdgeInsets.only(top: 8),
+            child: Text(
+              'OSM-based scores are mapping-completeness proxies. Review them '
+              'before use; they do not measure traffic or legal land access.',
+              style: TextStyle(fontSize: 12, color: Colors.black54),
+            ),
+          ),
+          if (intelligence.attribution.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                'Attribution: ${intelligence.attribution.map((item) => '${item.source} (${item.licence})').join(' • ')}',
+                style: const TextStyle(fontSize: 12, color: Colors.black54),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget buildPopulationSuggestion(PopulationEvidence evidence) {
+    if (!evidence.available) return const SizedBox.shrink();
+    final density = evidence.densityPerSqKm;
+    return buildSuggestionSection(
+      title: 'Population Density',
+      evidence: [
+        if (density != null)
+          'Estimated density: ${density.toStringAsFixed(2)} people/km²',
+        if (evidence.dataYear != null) 'Data year: ${evidence.dataYear}',
+        if (evidence.source != null) 'Source: ${evidence.source}',
+        'Confidence: ${confidenceLabel(evidence.confidence)}',
+      ],
+      buttonLabel: evidence.hasUsableSuggestion ? 'Use population value' : null,
+      onApply: evidence.hasUsableSuggestion
+          ? () => setState(() => _applyPopulationSuggestion(evidence))
+          : null,
+    );
+  }
+
+  Widget buildVehicleDemandSuggestion(VehicleDemandProxy evidence) {
+    if (!evidence.available || !evidence.hasUsableSuggestion) {
+      return const SizedBox.shrink();
+    }
+    return buildSuggestionSection(
+      title: evidence.isProxy
+          ? 'Regional vehicle-registration proxy'
+          : 'Vehicle demand',
+      evidence: [
+        'Value: ${evidence.value}',
+        if (evidence.geographicScope != null)
+          'Geographic scope: ${evidence.geographicScope}',
+        if (evidence.dataPeriod != null) 'Period: ${evidence.dataPeriod}',
+        if (evidence.source != null) 'Source: ${evidence.source}',
+        'This is not a vehicle count within the selected radius.',
+      ],
+      buttonLabel: 'Use vehicle value',
+      onApply: () => setState(() => _applyVehicleSuggestion(evidence)),
+    );
+  }
+
+  Widget buildRoadSuggestion(RoadAccessibilityEvidence evidence) {
+    if (!evidence.available) return const SizedBox.shrink();
+    return buildSuggestionSection(
+      title: 'Road Accessibility',
+      evidence: [
+        if (evidence.nearestUsableRoadM != null)
+          'Nearest usable road: ${evidence.nearestUsableRoadM!.toStringAsFixed(1)} m',
+        if (evidence.majorRoadCount != null)
+          'Major road features: ${evidence.majorRoadCount}',
+        scoreText(evidence.suggestedScore),
+        sourceConfidenceText(evidence.source, evidence.confidence),
+      ],
+      buttonLabel: evidence.hasUsableSuggestion ? 'Use road score' : null,
+      onApply: evidence.hasUsableSuggestion
+          ? () => setState(
+              () => _applyScoreSuggestion(
+                evidence.suggestedScore,
+                (value) => roadAccessibility = value,
+              ),
+            )
+          : null,
+    );
+  }
+
+  Widget buildCommercialSuggestion(CommercialActivityEvidence evidence) {
+    if (!evidence.available) return const SizedBox.shrink();
+    return buildSuggestionSection(
+      title: 'Commercial Activity',
+      evidence: [
+        if (evidence.commercialPoiCount != null)
+          'Commercial POIs: ${evidence.commercialPoiCount}',
+        if (evidence.commercialLanduseCount != null)
+          'Commercial land-use features: ${evidence.commercialLanduseCount}',
+        scoreText(evidence.suggestedScore),
+        sourceConfidenceText(evidence.source, evidence.confidence),
+      ],
+      buttonLabel: evidence.hasUsableSuggestion ? 'Use commercial score' : null,
+      onApply: evidence.hasUsableSuggestion
+          ? () => setState(
+              () => _applyScoreSuggestion(
+                evidence.suggestedScore,
+                (value) => commercialActivity = value,
+              ),
+            )
+          : null,
+    );
+  }
+
+  Widget buildResidentialSuggestion(ResidentialActivityEvidence evidence) {
+    if (!evidence.available) return const SizedBox.shrink();
+    return buildSuggestionSection(
+      title: 'Residential Activity',
+      evidence: [
+        if (evidence.residentialFeatureCount != null)
+          'Residential features: ${evidence.residentialFeatureCount}',
+        if (evidence.residentialLanduseCount != null)
+          'Residential land-use features: ${evidence.residentialLanduseCount}',
+        scoreText(evidence.suggestedScore),
+        sourceConfidenceText(evidence.source, evidence.confidence),
+      ],
+      buttonLabel: evidence.hasUsableSuggestion
+          ? 'Use residential score'
+          : null,
+      onApply: evidence.hasUsableSuggestion
+          ? () => setState(
+              () => _applyScoreSuggestion(
+                evidence.suggestedScore,
+                (value) => residentialActivity = value,
+              ),
+            )
+          : null,
+    );
+  }
+
+  Widget buildLandSuggestion(LandAccessibilityEvidence evidence) {
+    if (!evidence.available) return const SizedBox.shrink();
+    return buildSuggestionSection(
+      title: 'Land Accessibility Proxy',
+      evidence: [
+        if (evidence.nearestAccessRoadM != null)
+          'Nearest access road: ${evidence.nearestAccessRoadM!.toStringAsFixed(1)} m',
+        if (evidence.restrictedAccessFeatureCount != null)
+          'Restricted-access features: ${evidence.restrictedAccessFeatureCount}',
+        evidence.suggestedScore == null
+            ? 'No automatic land-access score is available.'
+            : scoreText(evidence.suggestedScore),
+        sourceConfidenceText(evidence.source, evidence.confidence),
+        'This does not establish ownership, legal access, planning permission or site availability.',
+      ],
+      buttonLabel: evidence.hasUsableSuggestion ? 'Use land score' : null,
+      onApply: evidence.hasUsableSuggestion
+          ? () => setState(
+              () => _applyScoreSuggestion(
+                evidence.suggestedScore,
+                (value) => landAccessibility = value,
+              ),
+            )
+          : null,
+    );
+  }
+
+  Widget buildSuggestionSection({
+    required String title,
+    required List<String> evidence,
+    required String? buttonLabel,
+    required VoidCallback? onApply,
+  }) {
+    return ExpansionTile(
+      tilePadding: EdgeInsets.zero,
+      childrenPadding: const EdgeInsets.only(bottom: 8),
+      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+      children: [
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final line in evidence)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 2),
+                  child: Text(line, style: const TextStyle(fontSize: 13)),
+                ),
+              if (buttonLabel != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: OutlinedButton(
+                    onPressed: isSaving ? null : onApply,
+                    child: Text(buttonLabel),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  String scoreText(int? score) => score == null
+      ? 'Suggested score unavailable'
+      : 'Suggested Score: $score / 5';
+
+  String sourceConfidenceText(
+    String? source,
+    SiteFactorConfidence confidence,
+  ) =>
+      '${source == null ? 'Source unavailable' : 'Source: $source'} · '
+      'Confidence: ${confidenceLabel(confidence)}';
+
+  String confidenceLabel(SiteFactorConfidence confidence) =>
+      switch (confidence) {
+        SiteFactorConfidence.medium => 'Medium',
+        SiteFactorConfidence.low => 'Low',
+      };
 
   @override
   void dispose() {
@@ -335,6 +633,7 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
               ),
             ),
           ],
+          buildSiteDataSuggestionsPanel(),
           if (submissionErrorMessage != null) ...[
             const SizedBox(height: 12),
             Text(
@@ -409,6 +708,13 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
                 trafficLevel = value;
               });
             },
+          ),
+          const Padding(
+            padding: EdgeInsets.only(bottom: 16),
+            child: Text(
+              'Traffic level requires observation or a separate traffic-data provider.',
+              style: TextStyle(fontSize: 12, color: Colors.black54),
+            ),
           ),
           ratingField(
             label: 'Road Accessibility',
@@ -515,6 +821,7 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: DropdownButtonFormField<int>(
+        key: ValueKey('$label-$value'),
         initialValue: value,
         decoration: InputDecoration(labelText: label, prefixIcon: Icon(icon)),
         items: List.generate(5, (index) {
