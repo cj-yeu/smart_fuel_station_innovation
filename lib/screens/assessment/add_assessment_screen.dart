@@ -279,7 +279,10 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
       selectedSiteValidationResult = selection.validationResult;
       selectedNearbyFuelStationResult = selection.nearbyFuelStations;
       selectedSiteFactorIntelligenceResult = selection.siteFactorIntelligence;
-      _autofillLocation(selection.validationResult);
+      _autofillLocation(
+        selection.validationResult,
+        selection.siteFactorIntelligence,
+      );
       _applyNearbyFuelStationAutofill(selection.nearbyFuelStations);
       _autofillAvailableSiteFactors(selection.siteFactorIntelligence);
       requiresSiteRevalidation = false;
@@ -298,10 +301,17 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
     }
   }
 
-  void _autofillLocation(EastMalaysiaSiteValidationResult validation) {
+  void _autofillLocation(
+    EastMalaysiaSiteValidationResult validation,
+    SiteFactorIntelligenceResult? intelligence,
+  ) {
     if (locationController.text.trim().isNotEmpty) return;
     final territory = validation.candidate.confirmedTerritory;
-    if (territory != null) {
+    final district = intelligence?.districtReference;
+    if (territory != null && district != null) {
+      locationController.text =
+          '${district.name}, ${territory.displayLabel}, Malaysia';
+    } else if (territory != null) {
       locationController.text = '${territory.displayLabel}, Malaysia';
     }
   }
@@ -555,6 +565,19 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
         SiteFactorConfidence.low => 'Low',
       };
 
+  String get selectedSiteSummaryText {
+    final validation = selectedSiteValidationResult!;
+    final candidate = validation.candidate;
+    final district = selectedSiteFactorIntelligenceResult?.districtReference;
+    return 'Validated site: '
+        '${candidate.point.latitude.toStringAsFixed(5)}, '
+        '${candidate.point.longitude.toStringAsFixed(5)}'
+        '\nRadius: ${candidate.analysisRadiusKm.toStringAsFixed(0)} km'
+        '\nConfirmed territory: ${candidate.confirmedTerritory!.displayLabel}'
+        '${district == null ? '' : '\nDistrict reference: ${district.name}'}'
+        '\nGeographically validated';
+  }
+
   @override
   void dispose() {
     locationController.dispose();
@@ -594,14 +617,7 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
               child: Padding(
                 padding: const EdgeInsets.all(12),
                 child: Text(
-                  'Validated site: '
-                  '${selectedSiteValidationResult!.candidate.point.latitude.toStringAsFixed(5)}, '
-                  '${selectedSiteValidationResult!.candidate.point.longitude.toStringAsFixed(5)}'
-                  '\nRadius: '
-                  '${selectedSiteValidationResult!.candidate.analysisRadiusKm.toStringAsFixed(0)} km'
-                  '\nConfirmed territory: '
-                  '${selectedSiteValidationResult!.candidate.confirmedTerritory!.displayLabel}'
-                  '\nGeographically validated',
+                  selectedSiteSummaryText,
                   key: const ValueKey('selected-site-summary'),
                 ),
               ),

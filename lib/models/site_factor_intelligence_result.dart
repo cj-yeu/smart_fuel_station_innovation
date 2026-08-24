@@ -32,6 +32,41 @@ class SiteFactorAttribution {
   }
 }
 
+class DistrictReference {
+  final String name;
+  final String source;
+  final String sourceUrl;
+  final String licence;
+
+  const DistrictReference({
+    required this.name,
+    required this.source,
+    required this.sourceUrl,
+    required this.licence,
+  });
+
+  factory DistrictReference.fromMap(Map<String, dynamic> map) {
+    return DistrictReference(
+      name: SiteFactorIntelligenceResult._requiredString(
+        map['name'],
+        'district name',
+      ),
+      source: SiteFactorIntelligenceResult._requiredString(
+        map['source'],
+        'district source',
+      ),
+      sourceUrl: SiteFactorIntelligenceResult._requiredString(
+        map['source_url'],
+        'district source URL',
+      ),
+      licence: SiteFactorIntelligenceResult._requiredString(
+        map['licence'],
+        'district licence',
+      ),
+    );
+  }
+}
+
 class PopulationEvidence {
   final bool available;
   final double? estimatedPopulation;
@@ -170,6 +205,7 @@ class VehicleDemandProxy {
 class SiteFactorIntelligenceResult {
   final GeoPoint point;
   final double analysisRadiusKm;
+  final DistrictReference? districtReference;
   final PopulationEvidence population;
   final RoadAccessibilityEvidence roadAccessibility;
   final CommercialActivityEvidence commercialActivity;
@@ -181,6 +217,7 @@ class SiteFactorIntelligenceResult {
   SiteFactorIntelligenceResult({
     required this.point,
     required this.analysisRadiusKm,
+    required this.districtReference,
     required this.population,
     required this.roadAccessibility,
     required this.commercialActivity,
@@ -237,6 +274,9 @@ class SiteFactorIntelligenceResult {
     return SiteFactorIntelligenceResult(
       point: point,
       analysisRadiusKm: radius,
+      districtReference: _nullableDistrictReference(
+        candidate['district_reference'],
+      ),
       population: _parsePopulation(
         _requiredMap(row['population'], 'population'),
       ),
@@ -282,6 +322,11 @@ class SiteFactorIntelligenceResult {
       dataYear: _nullableInt(map['data_year'], 'population data year'),
       confidence: _parseConfidence(map['confidence']),
     );
+  }
+
+  static DistrictReference? _nullableDistrictReference(Object? value) {
+    if (value == null) return null;
+    return DistrictReference.fromMap(_requiredMap(value, 'district reference'));
   }
 
   static RoadAccessibilityEvidence _parseRoad(Map<String, dynamic> map) {

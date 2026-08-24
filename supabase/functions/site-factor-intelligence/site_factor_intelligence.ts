@@ -16,6 +16,13 @@ export const openStreetMapAttribution = "© OpenStreetMap contributors";
 export const openStreetMapAttributionUrl = "https://www.openstreetmap.org/copyright";
 export const worldPopAttribution = "WorldPop, University of Southampton";
 export const worldPopAttributionUrl = "https://hub.worldpop.org/";
+export const geoBoundariesDistrictEndpoint =
+  "https://github.com/wmgeolab/geoBoundaries/raw/9469f09/releaseData/gbOpen/MYS/ADM2/geoBoundaries-MYS-ADM2.geojson";
+export const geoBoundariesDistrictSource = "geoBoundaries MYS ADM2";
+export const geoBoundariesDistrictSourceUrl =
+  "https://www.geoboundaries.org/api/current/gbOpen/MYS/ADM2/";
+export const geoBoundariesDistrictLicence = "CC BY 3.0";
+export const districtProviderTimeoutMs = 12_000;
 
 export interface SiteFactorIntelligenceRequest {
   latitude: number;
@@ -24,6 +31,11 @@ export interface SiteFactorIntelligenceRequest {
 }
 
 export type ConfirmedEastMalaysiaTerritory = "sabah" | "sarawak" | "labuan";
+
+export interface DistrictReference {
+  name: string;
+  territory: ConfirmedEastMalaysiaTerritory;
+}
 
 export type OsmType = "node" | "way" | "relation";
 export interface Coordinate { latitude: number; longitude: number; }
@@ -262,12 +274,23 @@ export function toPublicResponse(
   request: SiteFactorIntelligenceRequest, population: PopulationEvidence | null,
   osm: OsmFactorEvidence | null,
   confirmedTerritory: ConfirmedEastMalaysiaTerritory,
+  district: DistrictReference | null,
   fetchedAt: Date,
 ): Record<string, unknown> {
   const osmSource = { source: "OpenStreetMap via Overpass API", fetched_at: fetchedAt.toISOString() };
   const vehicleDemand = makeVehicleRegistrationProxy(confirmedTerritory);
   return {
-    candidate: { latitude: request.latitude, longitude: request.longitude, analysis_radius_km: request.analysisRadiusKm },
+    candidate: {
+      latitude: request.latitude,
+      longitude: request.longitude,
+      analysis_radius_km: request.analysisRadiusKm,
+      district_reference: district === null ? null : {
+        name: district.name,
+        source: geoBoundariesDistrictSource,
+        source_url: geoBoundariesDistrictSourceUrl,
+        licence: geoBoundariesDistrictLicence,
+      },
+    },
     population: population === null ? makeUnavailablePopulation() : {
       available: true, estimated_population: population.estimatedPopulation,
       density_per_sq_km: population.densityPerSqKm, suggested_level: population.suggestedLevel,
@@ -306,6 +329,7 @@ export function toPublicResponse(
       ...(population === null ? [] : [{ source: worldPopAttribution, url: worldPopAttributionUrl, licence: "CC BY 4.0" }]),
       ...(osm === null ? [] : [{ source: openStreetMapAttribution, url: openStreetMapAttributionUrl, licence: "ODbL" }]),
       ...(vehicleDemand === null ? [] : [{ source: "JPJ via data.gov.my", url: "https://storage.data.gov.my/transportation/vehicles_2026.csv", licence: "CC BY 4.0" }]),
+      ...(district === null ? [] : [{ source: geoBoundariesDistrictSource, url: geoBoundariesDistrictSourceUrl, licence: geoBoundariesDistrictLicence }]),
     ],
   };
 }
