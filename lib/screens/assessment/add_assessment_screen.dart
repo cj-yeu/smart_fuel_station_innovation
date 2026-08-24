@@ -279,6 +279,7 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
       selectedSiteValidationResult = selection.validationResult;
       selectedNearbyFuelStationResult = selection.nearbyFuelStations;
       selectedSiteFactorIntelligenceResult = selection.siteFactorIntelligence;
+      _autofillLocation(selection.validationResult);
       _applyNearbyFuelStationAutofill(selection.nearbyFuelStations);
       _autofillAvailableSiteFactors(selection.siteFactorIntelligence);
       requiresSiteRevalidation = false;
@@ -294,6 +295,14 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
     if (competitorDistanceController.text.trim().isEmpty) {
       competitorDistanceController.text = (result.nearestDistanceKm ?? 0)
           .toStringAsFixed(2);
+    }
+  }
+
+  void _autofillLocation(EastMalaysiaSiteValidationResult validation) {
+    if (locationController.text.trim().isNotEmpty) return;
+    final territory = validation.candidate.confirmedTerritory;
+    if (territory != null) {
+      locationController.text = '${territory.displayLabel}, Malaysia';
     }
   }
 
@@ -636,8 +645,9 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
           const Padding(
             padding: EdgeInsets.only(bottom: 16),
             child: Text(
-              'No selected-radius vehicle-registration dataset is configured. '
-              'Enter and edit a local estimate manually.',
+              'When available, the auto-filled number is a regional JPJ '
+              'registration-channel proxy—not vehicles near this site. You can '
+              'edit it manually.',
               style: TextStyle(fontSize: 12, color: Colors.black54),
             ),
           ),

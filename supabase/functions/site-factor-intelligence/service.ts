@@ -18,12 +18,16 @@ import {
   worldPopOverallTimeoutMs,
   worldPopPopulationEndpoint,
   worldPopTasksEndpoint,
+  type ConfirmedEastMalaysiaTerritory,
   type SiteFactorIntelligenceRequest,
 } from "./site_factor_intelligence.ts";
 
 export type HttpClient = (url: string, init: RequestInit) => Promise<Response>;
 export interface SiteValidator {
-  validate(request: SiteFactorIntelligenceRequest, accessToken: string): Promise<{ validationStatus: string }>;
+  validate(request: SiteFactorIntelligenceRequest, accessToken: string): Promise<{
+    validationStatus: string;
+    confirmedTerritory: ConfirmedEastMalaysiaTerritory | null;
+  }>;
 }
 export interface SiteFactorIntelligenceDependencies {
   authenticate(accessToken: string): Promise<boolean>;
@@ -69,7 +73,9 @@ export function createSiteFactorIntelligenceHandler(dependencies: SiteFactorInte
     try {
       const candidate = await parseBoundedSiteFactorIntelligenceRequest(request);
       const validation = await dependencies.validator.validate(candidate, accessToken);
-      if (validation.validationStatus !== "inside") throw new SiteNotValidatedInside();
+      if (validation.validationStatus !== "inside" || validation.confirmedTerritory === null) {
+        throw new SiteNotValidatedInside();
+      }
       const [populationResult, osmResult] = await Promise.allSettled([
         loadWorldPopPopulation(candidate, dependencies.http),
         loadOverpassEvidence(candidate, dependencies.http),
@@ -78,6 +84,7 @@ export function createSiteFactorIntelligenceHandler(dependencies: SiteFactorInte
         candidate,
         populationResult.status === "fulfilled" ? populationResult.value : null,
         osmResult.status === "fulfilled" ? osmResult.value : null,
+        validation.confirmedTerritory,
         (dependencies.now ?? (() => new Date()))(),
       ));
     } catch (error) {

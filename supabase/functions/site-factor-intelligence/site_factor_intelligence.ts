@@ -23,6 +23,8 @@ export interface SiteFactorIntelligenceRequest {
   analysisRadiusKm: 3 | 5 | 10;
 }
 
+export type ConfirmedEastMalaysiaTerritory = "sabah" | "sarawak" | "labuan";
+
 export type OsmType = "node" | "way" | "relation";
 export interface Coordinate { latitude: number; longitude: number; }
 export interface OsmEvidence {
@@ -229,11 +231,41 @@ export function makeUnavailableOsmFactor(kind: "road" | "commercial" | "resident
   return { ...common, nearest_access_road_m: null, restricted_access_feature_count: null, suggested_score: null, confidence: "low" };
 }
 
+/**
+ * A manually refreshed, regional registration-channel proxy derived from the
+ * official JPJ transaction CSV. It is intentionally not a count of vehicles
+ * located near the candidate or within the analysis radius.
+ */
+export function makeVehicleRegistrationProxy(
+  territory: ConfirmedEastMalaysiaTerritory,
+): Record<string, unknown> | null {
+  const value = {
+    sabah: 15_710,
+    sarawak: 17_621,
+    // The official CSV contains no Labuan-channel registrations in this
+    // reporting period, so a zero must not be used as a local-demand estimate.
+    labuan: null,
+  }[territory];
+  if (value === null) return null;
+  const territoryLabel = territory === "sabah" ? "Sabah" : "Sarawak";
+  return {
+    available: true,
+    value,
+    geographic_scope: `${territoryLabel} JPJ registration-office/channel records`,
+    data_period: "2026-01-01 to 2026-07-31",
+    is_proxy: true,
+    source: "JPJ vehicle-registration transactions via data.gov.my",
+  };
+}
+
 export function toPublicResponse(
   request: SiteFactorIntelligenceRequest, population: PopulationEvidence | null,
-  osm: OsmFactorEvidence | null, fetchedAt: Date,
+  osm: OsmFactorEvidence | null,
+  confirmedTerritory: ConfirmedEastMalaysiaTerritory,
+  fetchedAt: Date,
 ): Record<string, unknown> {
   const osmSource = { source: "OpenStreetMap via Overpass API", fetched_at: fetchedAt.toISOString() };
+  const vehicleDemand = makeVehicleRegistrationProxy(confirmedTerritory);
   return {
     candidate: { latitude: request.latitude, longitude: request.longitude, analysis_radius_km: request.analysisRadiusKm },
     population: population === null ? makeUnavailablePopulation() : {
@@ -264,11 +296,16 @@ export function toPublicResponse(
       // permission, easements, legal access, or site availability.
       suggested_score: osm.landAccessibility.suggestedScore, confidence: "low",
     },
-    // JPJ data is registration-office data, not candidate-radius vehicle demand.
-    vehicle_demand: { available: false, value: null, geographic_scope: null, data_period: null, is_proxy: true, source: null },
+    // JPJ state is a registration office/channel field, never candidate-radius
+    // demand or a count of vehicles located at this site.
+    vehicle_demand: vehicleDemand ?? {
+      available: false, value: null, geographic_scope: null, data_period: null,
+      is_proxy: true, source: null,
+    },
     attribution: [
       ...(population === null ? [] : [{ source: worldPopAttribution, url: worldPopAttributionUrl, licence: "CC BY 4.0" }]),
       ...(osm === null ? [] : [{ source: openStreetMapAttribution, url: openStreetMapAttributionUrl, licence: "ODbL" }]),
+      ...(vehicleDemand === null ? [] : [{ source: "JPJ via data.gov.my", url: "https://storage.data.gov.my/transportation/vehicles_2026.csv", licence: "CC BY 4.0" }]),
     ],
   };
 }

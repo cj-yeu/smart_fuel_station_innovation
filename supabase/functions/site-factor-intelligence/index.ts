@@ -39,7 +39,15 @@ function createValidator(): SiteValidator {
           typeof value[0] !== "object") throw new Error("validator returned an invalid result");
         const status = (value[0] as Record<string, unknown>).validation_status;
         if (typeof status !== "string") throw new Error("validator returned an invalid status");
-        return { validationStatus: status };
+        const confirmedTerritory = (value[0] as Record<string, unknown>).confirmed_territory;
+        if (status !== "inside") {
+          return { validationStatus: status, confirmedTerritory: null };
+        }
+        if (confirmedTerritory !== "sabah" && confirmedTerritory !== "sarawak" &&
+          confirmedTerritory !== "labuan") {
+          throw new Error("validator returned an invalid territory");
+        }
+        return { validationStatus: status, confirmedTerritory };
       } finally { clearTimeout(timeout); }
     },
   };
