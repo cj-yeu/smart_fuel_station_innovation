@@ -5,6 +5,7 @@ import {
   buildRadiusPolygon,
   maximumProviderResponseBytes,
   overpassEndpoint,
+  overpassTimeoutMs,
   parseBearerToken,
   parseBoundedSiteFactorIntelligenceRequest,
   parseOverpassEvidence,
@@ -95,7 +96,7 @@ async function loadOverpassEvidence(request: SiteFactorIntelligenceRequest, http
       "user-agent": "Smart Fuel Station Innovation/1.0 (+https://github.com/cj-yeu/smart_fuel_station_innovation)",
     },
     body: new URLSearchParams({ data: buildFixedOverpassQuery(request) }),
-  });
+  }, undefined, overpassTimeoutMs);
   return scoreOsmEvidence(request, parseOverpassEvidence(payload));
 }
 
@@ -119,9 +120,15 @@ async function loadWorldPopPopulation(request: SiteFactorIntelligenceRequest, ht
   } catch (_) { throw new ProviderFailure(); } finally { clearTimeout(timeout); }
 }
 
-async function fetchProviderJson(http: HttpClient, url: string, init: RequestInit, overallSignal?: AbortSignal): Promise<unknown> {
+async function fetchProviderJson(
+  http: HttpClient,
+  url: string,
+  init: RequestInit,
+  overallSignal?: AbortSignal,
+  timeoutMs = providerTimeoutMs,
+): Promise<unknown> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), providerTimeoutMs);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   const onAbort = () => controller.abort();
   overallSignal?.addEventListener("abort", onAbort, { once: true });
   try {

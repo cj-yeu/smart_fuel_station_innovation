@@ -1,6 +1,9 @@
 export const supportedAnalysisRadiiKm = [3, 5, 10] as const;
 export const overpassEndpoint = "https://overpass-api.de/api/interpreter";
-export const overpassTimeoutMs = 8_000;
+// Public Overpass instances can queue a valid bounded request for longer than
+// eight seconds.  Keep the request bounded, but allow the server-side query
+// timeout (25 seconds) enough time to return a normal answer.
+export const overpassTimeoutMs = 30_000;
 export const maximumRequestBodyBytes = 4_096;
 export const maximumOverpassResponseBytes = 1_024 * 1_024;
 export const maximumUpstreamElementCount = 500;

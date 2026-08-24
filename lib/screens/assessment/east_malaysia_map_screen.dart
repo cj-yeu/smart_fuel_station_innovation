@@ -424,7 +424,7 @@ class _EastMalaysiaMapScreenState extends State<EastMalaysiaMapScreen> {
       setState(() {
         siteFactorIntelligenceResult = null;
         siteFactorIntelligenceError =
-            'Site data suggestions are unavailable. You can retry or continue '
+            'Site data is unavailable. You can retry or continue '
             'with manual values.';
       });
     } finally {
@@ -589,7 +589,7 @@ class _EastMalaysiaMapScreenState extends State<EastMalaysiaMapScreen> {
               child: CircularProgressIndicator(strokeWidth: 2),
             ),
             SizedBox(width: 8),
-            Text('Loading site data suggestions...'),
+            Text('Loading site data...'),
           ],
         ),
       );
@@ -608,7 +608,7 @@ class _EastMalaysiaMapScreenState extends State<EastMalaysiaMapScreen> {
           TextButton(
             key: const ValueKey('retry-site-factor-intelligence-button'),
             onPressed: () => loadSiteIntelligence(result!),
-            child: const Text('Retry site data suggestions'),
+            child: const Text('Retry site data'),
           ),
         ],
       ),

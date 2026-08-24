@@ -4,9 +4,13 @@ export const worldPopPopulationEndpoint = "https://api.worldpop.org/v2/populatio
 export const worldPopTasksEndpoint = "https://api.worldpop.org/v2/tasks";
 export const worldPopDataYear = 2026;
 export const maximumRequestBodyBytes = 4_096;
-export const maximumProviderResponseBytes = 1_024 * 1_024;
-export const maximumOsmElementCount = 1_200;
+export const maximumProviderResponseBytes = 2 * 1_024 * 1_024;
+export const maximumOsmElementCount = 5_000;
 export const providerTimeoutMs = 8_000;
+// Overpass accepts the fixed query with a 25-second server timeout.  Public
+// instances can queue before processing, so this remains bounded while not
+// discarding a valid response prematurely.
+export const overpassTimeoutMs = 30_000;
 export const worldPopOverallTimeoutMs = 18_000;
 export const openStreetMapAttribution = "© OpenStreetMap contributors";
 export const openStreetMapAttributionUrl = "https://www.openstreetmap.org/copyright";
@@ -37,7 +41,11 @@ export interface OsmFactorEvidence {
   roadAccessibility: { nearestUsableRoadM: number | null; majorRoadCount: number; suggestedScore: number };
   commercialActivity: { commercialPoiCount: number; commercialLanduseCount: number; suggestedScore: number };
   residentialActivity: { residentialFeatureCount: number; residentialLanduseCount: number; suggestedScore: number };
-  landAccessibility: { nearestAccessRoadM: number | null; restrictedAccessFeatureCount: number };
+  landAccessibility: {
+    nearestAccessRoadM: number | null;
+    restrictedAccessFeatureCount: number;
+    suggestedScore: number;
+  };
 }
 
 export class InvalidSiteFactorIntelligenceRequest extends Error {
@@ -161,6 +169,10 @@ export function scoreOsmEvidence(request: SiteFactorIntelligenceRequest, evidenc
     landAccessibility: {
       nearestAccessRoadM: nearestUsableRoadM === null ? null : round(nearestUsableRoadM, 1),
       restrictedAccessFeatureCount,
+      suggestedScore: landAccessibilityProxyScore(
+        nearestUsableRoadM,
+        restrictedAccessFeatureCount,
+      ),
     },
   };
 }
@@ -248,7 +260,9 @@ export function toPublicResponse(
     land_accessibility: osm === null ? makeUnavailableOsmFactor("land") : {
       available: true, ...osmSource, nearest_access_road_m: osm.landAccessibility.nearestAccessRoadM,
       restricted_access_feature_count: osm.landAccessibility.restrictedAccessFeatureCount,
-      suggested_score: null, confidence: "low",
+      // A proximity/restriction proxy only; this never represents title,
+      // permission, easements, legal access, or site availability.
+      suggested_score: osm.landAccessibility.suggestedScore, confidence: "low",
     },
     // JPJ data is registration-office data, not candidate-radius vehicle demand.
     vehicle_demand: { available: false, value: null, geographic_scope: null, data_period: null, is_proxy: true, source: null },
@@ -360,6 +374,19 @@ function roadAccessibilityScore(highway: string, distanceMetres: number | null):
 }
 function commercialScore(density: number): number { return density < 2 ? 1 : density < 5 ? 2 : density < 10 ? 3 : density < 20 ? 4 : 5; }
 function residentialScore(density: number): number { return density < 5 ? 1 : density < 20 ? 2 : density < 50 ? 3 : density < 150 ? 4 : 5; }
+function landAccessibilityProxyScore(
+  nearestRoadMetres: number | null,
+  restrictedRoadCount: number,
+): number {
+  if (nearestRoadMetres === null) return 1;
+  const distanceScore = nearestRoadMetres <= 100 ? 5
+    : nearestRoadMetres <= 250 ? 4
+    : nearestRoadMetres <= 500 ? 3
+    : nearestRoadMetres <= 1_000 ? 2 : 1;
+  // Nearby private/no-access road features reduce the confidence of physical
+  // approach only. They are not evidence about the legal status of the site.
+  return clampInteger(distanceScore - (restrictedRoadCount > 0 ? 1 : 0), 1, 5);
+}
 function populationLevel(density: number): number { return density < 2_000 ? 1 : density < 4_000 ? 2 : density < 6_000 ? 3 : density < 8_000 ? 4 : 5; }
 function minimumRoadDistanceMetres(request: SiteFactorIntelligenceRequest, roads: OsmEvidence[]): number | null {
   let closest = Number.POSITIVE_INFINITY;

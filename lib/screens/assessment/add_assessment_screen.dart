@@ -59,6 +59,10 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
   int commercialActivity = 3;
   int residentialActivity = 3;
   int landAccessibility = 3;
+  bool roadAccessibilityEdited = false;
+  bool commercialActivityEdited = false;
+  bool residentialActivityEdited = false;
+  bool landAccessibilityEdited = false;
 
   bool isSaving = false;
   bool requiresSiteRevalidation = false;
@@ -276,6 +280,7 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
       selectedNearbyFuelStationResult = selection.nearbyFuelStations;
       selectedSiteFactorIntelligenceResult = selection.siteFactorIntelligence;
       _applyNearbyFuelStationAutofill(selection.nearbyFuelStations);
+      _autofillAvailableSiteFactors(selection.siteFactorIntelligence);
       requiresSiteRevalidation = false;
       submissionErrorMessage = null;
     });
@@ -283,48 +288,59 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
 
   void _applyNearbyFuelStationAutofill(NearbyFuelStationResult? result) {
     if (result == null) return;
-    nearbyStationsController.text = result.stationCount.toString();
-    competitorDistanceController.text = (result.nearestDistanceKm ?? 0)
-        .toStringAsFixed(2);
+    if (nearbyStationsController.text.trim().isEmpty) {
+      nearbyStationsController.text = result.stationCount.toString();
+    }
+    if (competitorDistanceController.text.trim().isEmpty) {
+      competitorDistanceController.text = (result.nearestDistanceKm ?? 0)
+          .toStringAsFixed(2);
+    }
   }
 
-  void applyAllSiteFactorSuggestions() {
-    final intelligence = selectedSiteFactorIntelligenceResult;
+  void _autofillAvailableSiteFactors(
+    SiteFactorIntelligenceResult? intelligence,
+  ) {
     if (intelligence == null) return;
-    setState(() {
-      _applyPopulationSuggestion(intelligence.population);
-      _applyVehicleSuggestion(intelligence.vehicleDemand);
-      _applyScoreSuggestion(
-        intelligence.roadAccessibility.suggestedScore,
-        (value) => roadAccessibility = value,
-      );
-      _applyScoreSuggestion(
-        intelligence.commercialActivity.suggestedScore,
-        (value) => commercialActivity = value,
-      );
-      _applyScoreSuggestion(
-        intelligence.residentialActivity.suggestedScore,
-        (value) => residentialActivity = value,
-      );
-      _applyScoreSuggestion(
-        intelligence.landAccessibility.suggestedScore,
-        (value) => landAccessibility = value,
-      );
-    });
+    final population = intelligence.population;
+    if (population.hasUsableSuggestion &&
+        populationController.text.trim().isEmpty) {
+      populationController.text = population.densityPerSqKm!.toStringAsFixed(2);
+    }
+
+    final vehicleDemand = intelligence.vehicleDemand;
+    if (vehicleDemand.hasUsableSuggestion &&
+        vehicleCountController.text.trim().isEmpty) {
+      vehicleCountController.text = vehicleDemand.value.toString();
+    }
+
+    _applyAutomaticScore(
+      intelligence.roadAccessibility.suggestedScore,
+      alreadyEdited: roadAccessibilityEdited,
+      apply: (value) => roadAccessibility = value,
+    );
+    _applyAutomaticScore(
+      intelligence.commercialActivity.suggestedScore,
+      alreadyEdited: commercialActivityEdited,
+      apply: (value) => commercialActivity = value,
+    );
+    _applyAutomaticScore(
+      intelligence.residentialActivity.suggestedScore,
+      alreadyEdited: residentialActivityEdited,
+      apply: (value) => residentialActivity = value,
+    );
+    _applyAutomaticScore(
+      intelligence.landAccessibility.suggestedScore,
+      alreadyEdited: landAccessibilityEdited,
+      apply: (value) => landAccessibility = value,
+    );
   }
 
-  void _applyPopulationSuggestion(PopulationEvidence population) {
-    if (!population.hasUsableSuggestion) return;
-    populationController.text = population.densityPerSqKm!.toStringAsFixed(2);
-  }
-
-  void _applyVehicleSuggestion(VehicleDemandProxy vehicleDemand) {
-    if (!vehicleDemand.hasUsableSuggestion) return;
-    vehicleCountController.text = vehicleDemand.value.toString();
-  }
-
-  void _applyScoreSuggestion(int? score, ValueChanged<int> apply) {
-    if (score == null || score < 1 || score > 5) return;
+  void _applyAutomaticScore(
+    int? score, {
+    required bool alreadyEdited,
+    required ValueChanged<int> apply,
+  }) {
+    if (alreadyEdited || score == null || score < 1 || score > 5) return;
     apply(score);
   }
 
@@ -332,34 +348,17 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
     final intelligence = selectedSiteFactorIntelligenceResult;
     if (intelligence == null) return const SizedBox.shrink();
 
-    final hasAnySuggestion =
-        intelligence.population.hasUsableSuggestion ||
-        intelligence.vehicleDemand.hasUsableSuggestion ||
-        intelligence.roadAccessibility.hasUsableSuggestion ||
-        intelligence.commercialActivity.hasUsableSuggestion ||
-        intelligence.residentialActivity.hasUsableSuggestion ||
-        intelligence.landAccessibility.hasUsableSuggestion;
-
     return Card(
       key: const ValueKey('site-data-suggestions-panel'),
       margin: const EdgeInsets.only(top: 12),
       color: const Color(0xFFE8F1FC),
       child: ExpansionTile(
-        title: const Text('Site Data Suggestions'),
-        subtitle: const Text('Review evidence before applying any value.'),
+        title: const Text('Site Data'),
+        subtitle: const Text(
+          'Available suggested values were filled into empty fields.',
+        ),
         childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
         children: [
-          if (hasAnySuggestion)
-            Align(
-              alignment: Alignment.centerLeft,
-              child: ElevatedButton.icon(
-                key: const ValueKey('use-all-site-factor-suggestions-button'),
-                onPressed: isSaving ? null : applyAllSiteFactorSuggestions,
-                icon: const Icon(Icons.playlist_add_check),
-                label: const Text('Use All Available Suggestions'),
-              ),
-            ),
-          if (hasAnySuggestion) const SizedBox(height: 8),
           buildPopulationSuggestion(intelligence.population),
           buildVehicleDemandSuggestion(intelligence.vehicleDemand),
           buildRoadSuggestion(intelligence.roadAccessibility),
@@ -399,10 +398,8 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
         if (evidence.source != null) 'Source: ${evidence.source}',
         'Confidence: ${confidenceLabel(evidence.confidence)}',
       ],
-      buttonLabel: evidence.hasUsableSuggestion ? 'Use population value' : null,
-      onApply: evidence.hasUsableSuggestion
-          ? () => setState(() => _applyPopulationSuggestion(evidence))
-          : null,
+      buttonLabel: null,
+      onApply: null,
     );
   }
 
@@ -422,8 +419,8 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
         if (evidence.source != null) 'Source: ${evidence.source}',
         'This is not a vehicle count within the selected radius.',
       ],
-      buttonLabel: 'Use vehicle value',
-      onApply: () => setState(() => _applyVehicleSuggestion(evidence)),
+      buttonLabel: null,
+      onApply: null,
     );
   }
 
@@ -439,15 +436,8 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
         scoreText(evidence.suggestedScore),
         sourceConfidenceText(evidence.source, evidence.confidence),
       ],
-      buttonLabel: evidence.hasUsableSuggestion ? 'Use road score' : null,
-      onApply: evidence.hasUsableSuggestion
-          ? () => setState(
-              () => _applyScoreSuggestion(
-                evidence.suggestedScore,
-                (value) => roadAccessibility = value,
-              ),
-            )
-          : null,
+      buttonLabel: null,
+      onApply: null,
     );
   }
 
@@ -463,15 +453,8 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
         scoreText(evidence.suggestedScore),
         sourceConfidenceText(evidence.source, evidence.confidence),
       ],
-      buttonLabel: evidence.hasUsableSuggestion ? 'Use commercial score' : null,
-      onApply: evidence.hasUsableSuggestion
-          ? () => setState(
-              () => _applyScoreSuggestion(
-                evidence.suggestedScore,
-                (value) => commercialActivity = value,
-              ),
-            )
-          : null,
+      buttonLabel: null,
+      onApply: null,
     );
   }
 
@@ -487,17 +470,8 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
         scoreText(evidence.suggestedScore),
         sourceConfidenceText(evidence.source, evidence.confidence),
       ],
-      buttonLabel: evidence.hasUsableSuggestion
-          ? 'Use residential score'
-          : null,
-      onApply: evidence.hasUsableSuggestion
-          ? () => setState(
-              () => _applyScoreSuggestion(
-                evidence.suggestedScore,
-                (value) => residentialActivity = value,
-              ),
-            )
-          : null,
+      buttonLabel: null,
+      onApply: null,
     );
   }
 
@@ -510,21 +484,12 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
           'Nearest access road: ${evidence.nearestAccessRoadM!.toStringAsFixed(1)} m',
         if (evidence.restrictedAccessFeatureCount != null)
           'Restricted-access features: ${evidence.restrictedAccessFeatureCount}',
-        evidence.suggestedScore == null
-            ? 'No automatic land-access score is available.'
-            : scoreText(evidence.suggestedScore),
+        scoreText(evidence.suggestedScore),
         sourceConfidenceText(evidence.source, evidence.confidence),
         'This does not establish ownership, legal access, planning permission or site availability.',
       ],
-      buttonLabel: evidence.hasUsableSuggestion ? 'Use land score' : null,
-      onApply: evidence.hasUsableSuggestion
-          ? () => setState(
-              () => _applyScoreSuggestion(
-                evidence.suggestedScore,
-                (value) => landAccessibility = value,
-              ),
-            )
-          : null,
+      buttonLabel: null,
+      onApply: null,
     );
   }
 
@@ -664,9 +629,17 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
           inputField(
             controller: vehicleCountController,
             label: 'Registered Vehicle Count',
-            hint: 'Estimated vehicles in the area',
+            hint: 'Enter your local vehicle-demand estimate',
             icon: Icons.directions_car_outlined,
             isNumber: true,
+          ),
+          const Padding(
+            padding: EdgeInsets.only(bottom: 16),
+            child: Text(
+              'No selected-radius vehicle-registration dataset is configured. '
+              'Enter and edit a local estimate manually.',
+              style: TextStyle(fontSize: 12, color: Colors.black54),
+            ),
           ),
           const SizedBox(height: 8),
           const Text(
@@ -723,6 +696,7 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
             onChanged: (value) {
               setState(() {
                 roadAccessibility = value;
+                roadAccessibilityEdited = true;
               });
             },
           ),
@@ -733,6 +707,7 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
             onChanged: (value) {
               setState(() {
                 commercialActivity = value;
+                commercialActivityEdited = true;
               });
             },
           ),
@@ -743,6 +718,7 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
             onChanged: (value) {
               setState(() {
                 residentialActivity = value;
+                residentialActivityEdited = true;
               });
             },
           ),
@@ -753,6 +729,7 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
             onChanged: (value) {
               setState(() {
                 landAccessibility = value;
+                landAccessibilityEdited = true;
               });
             },
           ),
