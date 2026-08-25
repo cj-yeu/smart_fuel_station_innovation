@@ -6,6 +6,8 @@ import {
   districtProviderTimeoutMs,
   geoBoundariesDistrictEndpoint,
   maximumProviderResponseBytes,
+  fallbackOverpassEndpoint,
+  fallbackOverpassTimeoutMs,
   overpassEndpoint,
   overpassTimeoutMs,
   parseBearerToken,
@@ -104,15 +106,41 @@ export function createSiteFactorIntelligenceHandler(dependencies: SiteFactorInte
 }
 
 async function loadOverpassEvidence(request: SiteFactorIntelligenceRequest, http: HttpClient) {
-  const payload = await fetchProviderJson(http, overpassEndpoint, {
+  let payload: unknown;
+  try {
+    payload = await loadOverpassPayload(
+      request,
+      http,
+      overpassEndpoint,
+      overpassTimeoutMs,
+    );
+  } catch (_) {
+    // Keep the request bounded and use just one server-owned fallback. This
+    // preserves partial availability when either OSM provider is unavailable.
+    payload = await loadOverpassPayload(
+      request,
+      http,
+      fallbackOverpassEndpoint,
+      fallbackOverpassTimeoutMs,
+    );
+  }
+  return scoreOsmEvidence(request, parseOverpassEvidence(payload));
+}
+
+async function loadOverpassPayload(
+  request: SiteFactorIntelligenceRequest,
+  http: HttpClient,
+  endpoint: string,
+  timeoutMs: number,
+): Promise<unknown> {
+  return fetchProviderJson(http, endpoint, {
     method: "POST",
     headers: {
       "content-type": "application/x-www-form-urlencoded;charset=UTF-8", accept: "application/json",
       "user-agent": "Smart Fuel Station Innovation/1.0 (+https://github.com/cj-yeu/smart_fuel_station_innovation)",
     },
     body: new URLSearchParams({ data: buildFixedOverpassQuery(request) }),
-  }, undefined, overpassTimeoutMs);
-  return scoreOsmEvidence(request, parseOverpassEvidence(payload));
+  }, undefined, timeoutMs);
 }
 
 async function loadWorldPopPopulation(request: SiteFactorIntelligenceRequest, http: HttpClient) {

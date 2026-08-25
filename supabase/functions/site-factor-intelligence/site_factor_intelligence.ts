@@ -1,5 +1,9 @@
 export const supportedAnalysisRadiiKm = [3, 5, 10] as const;
 export const overpassEndpoint = "https://overpass-api.de/api/interpreter";
+// This is a fixed, server-controlled fallback for a temporary queue or rate
+// limit on the primary public instance. Callers cannot select either endpoint.
+export const fallbackOverpassEndpoint =
+  "https://overpass.private.coffee/api/interpreter";
 export const worldPopPopulationEndpoint = "https://api.worldpop.org/v2/population";
 export const worldPopTasksEndpoint = "https://api.worldpop.org/v2/tasks";
 export const worldPopDataYear = 2026;
@@ -10,7 +14,8 @@ export const providerTimeoutMs = 8_000;
 // Overpass accepts the fixed query with a 25-second server timeout.  Public
 // instances can queue before processing, so this remains bounded while not
 // discarding a valid response prematurely.
-export const overpassTimeoutMs = 30_000;
+export const overpassTimeoutMs = 18_000;
+export const fallbackOverpassTimeoutMs = 12_000;
 export const worldPopOverallTimeoutMs = 18_000;
 export const openStreetMapAttribution = "© OpenStreetMap contributors";
 export const openStreetMapAttributionUrl = "https://www.openstreetmap.org/copyright";

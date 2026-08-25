@@ -321,10 +321,12 @@ class _CompanyOnboardingScreenState extends State<CompanyOnboardingScreen> {
             style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 10),
-          const Text(
+          Text(
             'Select the company you represent and enter its invitation code to continue.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.black54),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
           const SizedBox(height: 32),
           DropdownButtonFormField<FuelCompany>(
@@ -406,18 +408,23 @@ class _CompanyOnboardingScreenState extends State<CompanyOnboardingScreen> {
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: const Color(0xFFE8F5EC),
+              color: Theme.of(context).colorScheme.primaryContainer,
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const Row(
+            child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.security_outlined, color: Color(0xFF168C4B)),
-                SizedBox(width: 12),
+                Icon(
+                  Icons.security_outlined,
+                  color: Theme.of(context).colorScheme.onPrimaryContainer,
+                ),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Text(
                     'Use only the invitation code supplied by your company administrator. The code is not saved on this device.',
-                    style: TextStyle(color: Colors.black87),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onPrimaryContainer,
+                    ),
                   ),
                 ),
               ],

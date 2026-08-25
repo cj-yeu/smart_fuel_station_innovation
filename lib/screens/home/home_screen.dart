@@ -99,18 +99,18 @@ class _HomeScreenState extends State<HomeScreen> {
         backgroundColor: Colors.green,
         foregroundColor: Colors.white,
         actions: [
-          PopupMenuButton<ThemeMode>(
-            tooltip: 'Appearance',
-            icon: const Icon(Icons.brightness_6_outlined),
-            onSelected: AppThemeScope.of(context).setThemeMode,
-            itemBuilder: (context) => const [
-              PopupMenuItem(
-                value: ThemeMode.system,
-                child: Text('Use device setting'),
-              ),
-              PopupMenuItem(value: ThemeMode.light, child: Text('Light mode')),
-              PopupMenuItem(value: ThemeMode.dark, child: Text('Dark mode')),
-            ],
+          IconButton(
+            tooltip: Theme.of(context).brightness == Brightness.dark
+                ? 'Switch to light mode'
+                : 'Switch to dark mode',
+            onPressed: () => AppThemeScope.of(
+              context,
+            ).toggleLightDark(Theme.of(context).brightness),
+            icon: Icon(
+              Theme.of(context).brightness == Brightness.dark
+                  ? Icons.light_mode_outlined
+                  : Icons.dark_mode_outlined,
+            ),
           ),
           IconButton(
             tooltip: 'My Profile',
@@ -137,9 +137,11 @@ class _HomeScreenState extends State<HomeScreen> {
             style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             'Manage fuel station planning with site assessment and profitability evaluation.',
-            style: TextStyle(color: Colors.black54),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
           const SizedBox(height: 20),
           companyWorkspaceCard(
@@ -185,7 +187,7 @@ class _HomeScreenState extends State<HomeScreen> {
     required String role,
   }) {
     return Card(
-      color: const Color(0xFFE8F5EE),
+      color: Theme.of(context).colorScheme.primaryContainer,
       margin: const EdgeInsets.only(bottom: 16),
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -202,28 +204,41 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'Company Workspace',
                     style: TextStyle(
-                      color: Color(0xFF168C4B),
+                      color: Theme.of(context).colorScheme.onPrimaryContainer,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
                   const SizedBox(height: 6),
                   Text(
                     companyName,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 19,
                       fontWeight: FontWeight.bold,
+                      color: Theme.of(context).colorScheme.onPrimaryContainer,
                     ),
                   ),
                   const SizedBox(height: 4),
-                  Text('Company code: $companyCode'),
-                  Text('Signed in as $role'),
+                  Text(
+                    'Company code: $companyCode',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onPrimaryContainer,
+                    ),
+                  ),
+                  Text(
+                    'Signed in as $role',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onPrimaryContainer,
+                    ),
+                  ),
                   const SizedBox(height: 10),
-                  const Text(
+                  Text(
                     'Assess an East Malaysia site, then evaluate its business profitability.',
-                    style: TextStyle(color: Colors.black54),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onPrimaryContainer,
+                    ),
                   ),
                 ],
               ),

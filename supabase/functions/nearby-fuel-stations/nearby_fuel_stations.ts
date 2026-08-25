@@ -1,9 +1,13 @@
 export const supportedAnalysisRadiiKm = [3, 5, 10] as const;
 export const overpassEndpoint = "https://overpass-api.de/api/interpreter";
-// Public Overpass instances can queue a valid bounded request for longer than
-// eight seconds.  Keep the request bounded, but allow the server-side query
-// timeout (25 seconds) enough time to return a normal answer.
-export const overpassTimeoutMs = 30_000;
+// Fixed fallback for temporary main-instance queues or rate limits. It is
+// invoked only by the Edge Function after the primary endpoint fails.
+export const fallbackOverpassEndpoint =
+  "https://overpass.private.coffee/api/interpreter";
+// A small fuel-only query normally completes quickly. Keep the combined
+// primary and fallback wait within the former 30-second single-server bound.
+export const overpassTimeoutMs = 18_000;
+export const fallbackOverpassTimeoutMs = 12_000;
 export const maximumRequestBodyBytes = 4_096;
 export const maximumOverpassResponseBytes = 1_024 * 1_024;
 export const maximumUpstreamElementCount = 500;
@@ -52,9 +56,15 @@ export class InvalidNearbyFuelStationsRequest extends Error {
 }
 
 export class UpstreamFuelStationsFailure extends Error {
-  constructor(message = "OpenStreetMap fuel-station data is unavailable.") {
+  readonly retryable: boolean;
+
+  constructor(
+    message = "OpenStreetMap fuel-station data is unavailable.",
+    { retryable = true }: { retryable?: boolean } = {},
+  ) {
     super(message);
     this.name = "UpstreamFuelStationsFailure";
+    this.retryable = retryable;
   }
 }
 

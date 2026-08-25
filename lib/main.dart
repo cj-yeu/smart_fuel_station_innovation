@@ -41,18 +41,31 @@ class SmartFuelApp extends StatelessWidget {
 
   ThemeData _buildTheme(Brightness brightness) {
     final isDark = brightness == Brightness.dark;
+    final colorScheme = ColorScheme.fromSeed(
+      seedColor: const Color(0xFF168C4B),
+      brightness: brightness,
+    );
     return ThemeData(
       useMaterial3: true,
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: const Color(0xFF168C4B),
-        brightness: brightness,
-      ),
+      colorScheme: colorScheme,
       scaffoldBackgroundColor: isDark
           ? const Color(0xFF121715)
           : const Color(0xFFF5F8F6),
+      cardTheme: CardThemeData(
+        color: isDark ? const Color(0xFF1D2621) : Colors.white,
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(
+            color: isDark ? const Color(0xFF496255) : const Color(0xFFDCE5DF),
+          ),
+        ),
+      ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: isDark ? const Color(0xFF1D2621) : Colors.white,
+        labelStyle: TextStyle(color: colorScheme.onSurfaceVariant),
+        hintStyle: TextStyle(color: colorScheme.onSurfaceVariant),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide: BorderSide.none,

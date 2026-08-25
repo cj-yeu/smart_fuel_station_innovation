@@ -56,11 +56,11 @@ class _EditEvaluationScreenState extends State<EditEvaluationScreen> {
     stationNameController = TextEditingController(text: evaluation.stationName);
 
     fuelPriceController = TextEditingController(
-      text: evaluation.fuelPrice.toString(),
+      text: evaluation.fuelPrice.toStringAsFixed(2),
     );
 
     fuelCostController = TextEditingController(
-      text: evaluation.fuelPurchaseCost.toString(),
+      text: evaluation.fuelPurchaseCost.toStringAsFixed(2),
     );
 
     dailyCustomersController = TextEditingController(
@@ -72,27 +72,27 @@ class _EditEvaluationScreenState extends State<EditEvaluationScreen> {
     );
 
     rentalController = TextEditingController(
-      text: evaluation.monthlyRental.toString(),
+      text: evaluation.monthlyRental.toStringAsFixed(2),
     );
 
     salaryController = TextEditingController(
-      text: evaluation.monthlyStaffSalary.toString(),
+      text: evaluation.monthlyStaffSalary.toStringAsFixed(2),
     );
 
     utilitiesController = TextEditingController(
-      text: evaluation.monthlyUtilities.toString(),
+      text: evaluation.monthlyUtilities.toStringAsFixed(2),
     );
 
     maintenanceController = TextEditingController(
-      text: evaluation.monthlyMaintenance.toString(),
+      text: evaluation.monthlyMaintenance.toStringAsFixed(2),
     );
 
     otherCostController = TextEditingController(
-      text: evaluation.monthlyOtherCost.toString(),
+      text: evaluation.monthlyOtherCost.toStringAsFixed(2),
     );
 
     investmentController = TextEditingController(
-      text: evaluation.initialInvestment.toString(),
+      text: evaluation.initialInvestment.toStringAsFixed(2),
     );
     loadOfficialFuelPrice();
   }
@@ -452,7 +452,7 @@ class _EditEvaluationScreenState extends State<EditEvaluationScreen> {
     final price = officialFuelPrice;
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
-      color: const Color(0xFFE8F5EE),
+      color: Theme.of(context).colorScheme.primaryContainer,
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
@@ -464,7 +464,7 @@ class _EditEvaluationScreenState extends State<EditEvaluationScreen> {
             ),
             const SizedBox(height: 8),
             DropdownButtonFormField<OfficialFuelProduct>(
-              value: selectedFuelProduct,
+              initialValue: selectedFuelProduct,
               decoration: const InputDecoration(
                 labelText: 'Fuel Product',
                 isDense: true,

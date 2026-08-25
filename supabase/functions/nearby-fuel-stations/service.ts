@@ -4,6 +4,8 @@ import {
   type NearbyFuelStationsResult,
   UpstreamFuelStationsFailure,
   buildFixedOverpassQuery,
+  fallbackOverpassEndpoint,
+  fallbackOverpassTimeoutMs,
   makeNearbyFuelStationsResult,
   maximumOverpassResponseBytes,
   overpassEndpoint,
@@ -177,10 +179,42 @@ export async function fetchFixedOverpassPayload(
   request: NearbyFuelStationsRequest,
   timeoutMs = overpassTimeoutMs,
 ): Promise<unknown> {
+  try {
+    return await fetchOverpassPayloadFromEndpoint(
+      http,
+      request,
+      overpassEndpoint,
+      timeoutMs,
+    );
+  } catch (error) {
+    // Tests and callers that supply a custom timeout are explicitly asking for
+    // one bounded attempt. Production gets one fixed fallback endpoint.
+    if (
+      timeoutMs !== overpassTimeoutMs ||
+      !(error instanceof UpstreamFuelStationsFailure) ||
+      !error.retryable
+    ) {
+      throw error;
+    }
+    return fetchOverpassPayloadFromEndpoint(
+      http,
+      request,
+      fallbackOverpassEndpoint,
+      fallbackOverpassTimeoutMs,
+    );
+  }
+}
+
+async function fetchOverpassPayloadFromEndpoint(
+  http: HttpClient,
+  request: NearbyFuelStationsRequest,
+  endpoint: string,
+  timeoutMs: number,
+): Promise<unknown> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await http(overpassEndpoint, {
+    const response = await http(endpoint, {
       method: "POST",
       headers: {
         "content-type": "application/x-www-form-urlencoded;charset=UTF-8",
@@ -190,18 +224,28 @@ export async function fetchFixedOverpassPayload(
       body: new URLSearchParams({ data: buildFixedOverpassQuery(request) }),
       signal: controller.signal,
     });
-    if (!response.ok) throw new UpstreamFuelStationsFailure();
+    if (!response.ok) {
+      throw new UpstreamFuelStationsFailure(
+        undefined,
+        { retryable: response.status === 429 || response.status >= 500 },
+      );
+    }
     const text = await readBoundedUtf8Body(
       response.body,
       response.headers.get("content-length"),
       maximumOverpassResponseBytes,
-      () => new UpstreamFuelStationsFailure(),
+      () => new UpstreamFuelStationsFailure(undefined, { retryable: false }),
       controller.signal,
       () => controller.abort(),
     );
-    return JSON.parse(text);
+    try {
+      return JSON.parse(text);
+    } catch (_) {
+      throw new UpstreamFuelStationsFailure(undefined, { retryable: false });
+    }
   } catch (error) {
     if (error instanceof InvalidNearbyFuelStationsRequest) throw error;
+    if (error instanceof UpstreamFuelStationsFailure) throw error;
     throw new UpstreamFuelStationsFailure();
   } finally {
     clearTimeout(timeout);

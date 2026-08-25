@@ -226,20 +226,26 @@ class _EvaluationListScreenState extends State<EvaluationListScreen> {
         onRefresh: loadEvaluations,
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
-          children: const [
-            SizedBox(height: 140),
-            Icon(Icons.bar_chart_outlined, size: 90, color: Colors.black26),
-            SizedBox(height: 20),
-            Text(
+          children: [
+            const SizedBox(height: 140),
+            Icon(
+              Icons.bar_chart_outlined,
+              size: 90,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(height: 20),
+            const Text(
               'No evaluations yet',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
-            SizedBox(height: 8),
+            const SizedBox(height: 8),
             Text(
               'Create an evaluation to estimate profitability.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.black54),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
           ],
         ),

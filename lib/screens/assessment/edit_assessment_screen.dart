@@ -270,11 +270,9 @@ class _EditAssessmentScreenState extends State<EditAssessmentScreen> {
               label: const Text('View Validated Site Map'),
             ),
             const SizedBox(height: 12),
-            DecoratedBox(
-              decoration: const BoxDecoration(
-                color: Color(0xFFE7F3EC),
-                borderRadius: BorderRadius.all(Radius.circular(12)),
-              ),
+            Material(
+              color: Theme.of(context).colorScheme.primaryContainer,
+              borderRadius: BorderRadius.circular(12),
               child: Padding(
                 padding: const EdgeInsets.all(12),
                 child: Text(
@@ -314,12 +312,15 @@ class _EditAssessmentScreenState extends State<EditAssessmentScreen> {
             icon: Icons.directions_car_outlined,
             isNumber: true,
           ),
-          const Padding(
+          Padding(
             padding: EdgeInsets.only(bottom: 16),
             child: Text(
               'Enter a local estimate manually. No verified dataset provides '
               'the registered-vehicle count within the selected radius.',
-              style: TextStyle(fontSize: 12, color: Colors.black54),
+              style: TextStyle(
+                fontSize: 12,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
           ),
           const SizedBox(height: 8),
@@ -348,9 +349,11 @@ class _EditAssessmentScreenState extends State<EditAssessmentScreen> {
             style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 6),
-          const Text(
+          Text(
             'Rate each factor from 1 (Very Low) to 5 (Very High).',
-            style: TextStyle(color: Colors.black54),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
           const SizedBox(height: 16),
           ratingField(

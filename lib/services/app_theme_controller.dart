@@ -26,6 +26,15 @@ class AppThemeController extends ChangeNotifier {
     await _preferences.setString(_preferenceKey, value.name);
   }
 
+  /// Switches directly between the two explicit modes. If the first launch
+  /// follows the device setting, its current brightness determines the next
+  /// mode so one tap always produces a visible change.
+  Future<void> toggleLightDark(Brightness currentBrightness) {
+    return setThemeMode(
+      currentBrightness == Brightness.dark ? ThemeMode.light : ThemeMode.dark,
+    );
+  }
+
   static ThemeMode _themeModeFromPreference(String? value) => switch (value) {
     'light' => ThemeMode.light,
     'dark' => ThemeMode.dark,

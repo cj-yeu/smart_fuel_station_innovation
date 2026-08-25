@@ -73,9 +73,11 @@ class AssessmentResultScreen extends StatelessWidget {
                     color: color,
                   ),
                 ),
-                const Text(
+                Text(
                   'out of 100',
-                  style: TextStyle(color: Colors.black54),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
                 const SizedBox(height: 12),
                 Text(
@@ -90,6 +92,8 @@ class AssessmentResultScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 20),
+          calculationCard(context),
+          const SizedBox(height: 16),
           resultCard(
             icon: Icons.recommend,
             title: 'Recommendation',
@@ -119,6 +123,46 @@ class AssessmentResultScreen extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget calculationCard(BuildContext context) {
+    return Card(
+      child: ListTile(
+        leading: const Icon(Icons.calculate_outlined),
+        title: const Text(
+          'How the suitability score is calculated',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        subtitle: const Text('Tap to see the 0–100 scoring weights.'),
+        trailing: const Icon(Icons.info_outline),
+        onTap: () => showDialog<void>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('Suitability score'),
+            content: const SingleChildScrollView(
+              child: Text(
+                'Each factor is converted to a 0–100 score, then weighted:\n\n'
+                '• Population density: 15% (10,000 people/km² = 100)\n'
+                '• Traffic level: 20% (manual rating 1–5)\n'
+                '• Registered vehicle count: 15% (manual local estimate; 100,000 = 100)\n'
+                '• Competition: 15% (nearby-station count and nearest competitor distance combined)\n'
+                '• Road accessibility: 15%\n'
+                '• Commercial activity: 10%\n'
+                '• Residential activity: 5%\n'
+                '• Land-accessibility proxy: 5%\n\n'
+                'Ratings 1–5 are multiplied by 20. A score of 70+ is Good, 45–69.9 is Moderate, and below 45 is Poor.',
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Close'),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

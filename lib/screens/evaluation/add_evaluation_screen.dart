@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -27,6 +28,32 @@ class AddEvaluationScreen extends StatefulWidget {
 }
 
 class _AddEvaluationScreenState extends State<AddEvaluationScreen> {
+  static const _numericMaximums = <String, num>{
+    'Selling Price per Litre (RM)': 100,
+    'Purchase Cost per Litre (RM)': 100,
+    'Estimated Daily Customers': 100000,
+    'Average Litres per Customer': 1000,
+    'Rental or Land Cost (RM)': 100000000,
+    'Staff Salary (RM)': 100000000,
+    'Utilities (RM)': 100000000,
+    'Maintenance (RM)': 100000000,
+    'Other Operating Cost (RM)': 100000000,
+    'Initial Investment (RM)': 1000000000,
+  };
+
+  static const _numericRangeHints = <String, String>{
+    'Selling Price per Litre (RM)': 'Allowed: RM0–RM100 per litre',
+    'Purchase Cost per Litre (RM)': 'Allowed: RM0–RM100 per litre',
+    'Estimated Daily Customers': 'Allowed: 0–100,000 customers/day',
+    'Average Litres per Customer': 'Allowed: 0–1,000 litres/customer',
+    'Rental or Land Cost (RM)': 'Allowed: RM0–RM100,000,000 per month',
+    'Staff Salary (RM)': 'Allowed: RM0–RM100,000,000 per month',
+    'Utilities (RM)': 'Allowed: RM0–RM100,000,000 per month',
+    'Maintenance (RM)': 'Allowed: RM0–RM100,000,000 per month',
+    'Other Operating Cost (RM)': 'Allowed: RM0–RM100,000,000 per month',
+    'Initial Investment (RM)': 'Allowed: RM0–RM1,000,000,000',
+  };
+
   final stationNameController = TextEditingController();
   final fuelPriceController = TextEditingController();
   final fuelCostController = TextEditingController();
@@ -50,6 +77,7 @@ class _AddEvaluationScreenState extends State<AddEvaluationScreen> {
   bool isLoadingOfficialFuelPrice = true;
   bool officialFuelPriceUnavailable = false;
   bool isSaving = false;
+  Map<String, String> fieldErrors = const {};
 
   @override
   void initState() {
@@ -145,51 +173,122 @@ class _AddEvaluationScreenState extends State<AddEvaluationScreen> {
       return;
     }
 
-    if (stationName.isEmpty ||
-        fuelPrice == null ||
-        fuelCost == null ||
-        dailyCustomers == null ||
-        averageLitres == null ||
-        rental == null ||
-        salary == null ||
-        utilities == null ||
-        maintenance == null ||
-        otherCost == null ||
-        investment == null) {
+    final missingOrInvalidFields = <String, String>{};
+    void requireText(String label, String value) {
+      if (value.isEmpty) {
+        missingOrInvalidFields[label] = 'Required — enter a value.';
+      }
+    }
+
+    void requireNumber(
+      String label,
+      TextEditingController controller,
+      num? value,
+    ) {
+      final rawValue = controller.text.trim();
+      if (rawValue.isEmpty) {
+        missingOrInvalidFields[label] = 'Required — enter a value.';
+      } else if (value == null || !value.isFinite) {
+        missingOrInvalidFields[label] = 'Enter a valid number.';
+      } else if (value > _numericMaximums[label]!) {
+        missingOrInvalidFields[label] =
+            'Enter a value within ${_numericRangeHints[label]!.replaceFirst('Allowed: ', '')}.';
+      }
+    }
+
+    requireText('Station Name', stationName);
+    requireNumber(
+      'Selling Price per Litre (RM)',
+      fuelPriceController,
+      fuelPrice,
+    );
+    requireNumber('Purchase Cost per Litre (RM)', fuelCostController, fuelCost);
+    requireNumber(
+      'Estimated Daily Customers',
+      dailyCustomersController,
+      dailyCustomers,
+    );
+    requireNumber(
+      'Average Litres per Customer',
+      averageLitresController,
+      averageLitres,
+    );
+    requireNumber('Rental or Land Cost (RM)', rentalController, rental);
+    requireNumber('Staff Salary (RM)', salaryController, salary);
+    requireNumber('Utilities (RM)', utilitiesController, utilities);
+    requireNumber('Maintenance (RM)', maintenanceController, maintenance);
+    requireNumber('Other Operating Cost (RM)', otherCostController, otherCost);
+    requireNumber('Initial Investment (RM)', investmentController, investment);
+
+    if (missingOrInvalidFields.isNotEmpty) {
+      setState(() {
+        fieldErrors = missingOrInvalidFields;
+      });
       showMessage('Please fill in all fields', isError: true);
       return;
     }
 
-    if (fuelPrice < 0 ||
-        fuelCost < 0 ||
-        dailyCustomers < 0 ||
-        averageLitres < 0 ||
-        rental < 0 ||
-        salary < 0 ||
-        utilities < 0 ||
-        maintenance < 0 ||
-        otherCost < 0 ||
-        investment < 0) {
-      showMessage('Values cannot be negative', isError: true);
+    final validFuelPrice = fuelPrice!;
+    final validFuelCost = fuelCost!;
+    final validDailyCustomers = dailyCustomers!;
+    final validAverageLitres = averageLitres!;
+    final validRental = rental!;
+    final validSalary = salary!;
+    final validUtilities = utilities!;
+    final validMaintenance = maintenance!;
+    final validOtherCost = otherCost!;
+    final validInvestment = investment!;
+
+    if (validFuelPrice < 0 ||
+        validFuelCost < 0 ||
+        validDailyCustomers < 0 ||
+        validAverageLitres < 0 ||
+        validRental < 0 ||
+        validSalary < 0 ||
+        validUtilities < 0 ||
+        validMaintenance < 0 ||
+        validOtherCost < 0 ||
+        validInvestment < 0) {
+      final valuesByLabel = <String, num>{
+        'Selling Price per Litre (RM)': validFuelPrice,
+        'Purchase Cost per Litre (RM)': validFuelCost,
+        'Estimated Daily Customers': validDailyCustomers,
+        'Average Litres per Customer': validAverageLitres,
+        'Rental or Land Cost (RM)': validRental,
+        'Staff Salary (RM)': validSalary,
+        'Utilities (RM)': validUtilities,
+        'Maintenance (RM)': validMaintenance,
+        'Other Operating Cost (RM)': validOtherCost,
+        'Initial Investment (RM)': validInvestment,
+      };
+      for (final entry in valuesByLabel.entries) {
+        if (entry.value < 0) {
+          missingOrInvalidFields[entry.key] = 'Value cannot be negative.';
+        }
+      }
+      setState(() {
+        fieldErrors = missingOrInvalidFields;
+      });
+      showMessage('Correct the highlighted values', isError: true);
       return;
     }
 
     if (![
-      fuelPrice,
-      fuelCost,
-      averageLitres,
-      rental,
-      salary,
-      utilities,
-      maintenance,
-      otherCost,
-      investment,
+      validFuelPrice,
+      validFuelCost,
+      validAverageLitres,
+      validRental,
+      validSalary,
+      validUtilities,
+      validMaintenance,
+      validOtherCost,
+      validInvestment,
     ].every((value) => value.isFinite)) {
       showMessage('Values must be finite numbers', isError: true);
       return;
     }
 
-    if (fuelPrice <= fuelCost) {
+    if (validFuelPrice <= validFuelCost) {
       showMessage(
         'Selling price must be greater than purchase cost',
         isError: true,
@@ -199,35 +298,36 @@ class _AddEvaluationScreenState extends State<AddEvaluationScreen> {
 
     setState(() {
       isSaving = true;
+      fieldErrors = const {};
     });
 
     try {
       final result = BusinessEvaluationService.calculate(
-        fuelPrice: fuelPrice,
-        fuelPurchaseCost: fuelCost,
-        dailyCustomers: dailyCustomers,
-        averageLitres: averageLitres,
-        monthlyRental: rental,
-        monthlyStaffSalary: salary,
-        monthlyUtilities: utilities,
-        monthlyMaintenance: maintenance,
-        monthlyOtherCost: otherCost,
-        initialInvestment: investment,
+        fuelPrice: validFuelPrice,
+        fuelPurchaseCost: validFuelCost,
+        dailyCustomers: validDailyCustomers,
+        averageLitres: validAverageLitres,
+        monthlyRental: validRental,
+        monthlyStaffSalary: validSalary,
+        monthlyUtilities: validUtilities,
+        monthlyMaintenance: validMaintenance,
+        monthlyOtherCost: validOtherCost,
+        initialInvestment: validInvestment,
       );
 
       await Supabase.instance.client.from('business_evaluations').insert({
         'user_id': user.id,
         'station_name': stationName,
-        'fuel_price': fuelPrice,
-        'fuel_purchase_cost': fuelCost,
-        'daily_customers': dailyCustomers,
-        'average_litres': averageLitres,
-        'monthly_rental': rental,
-        'monthly_staff_salary': salary,
-        'monthly_utilities': utilities,
-        'monthly_maintenance': maintenance,
-        'monthly_other_cost': otherCost,
-        'initial_investment': investment,
+        'fuel_price': validFuelPrice,
+        'fuel_purchase_cost': validFuelCost,
+        'daily_customers': validDailyCustomers,
+        'average_litres': validAverageLitres,
+        'monthly_rental': validRental,
+        'monthly_staff_salary': validSalary,
+        'monthly_utilities': validUtilities,
+        'monthly_maintenance': validMaintenance,
+        'monthly_other_cost': validOtherCost,
+        'initial_investment': validInvestment,
         'monthly_sales_volume': result.monthlySalesVolume,
         'monthly_revenue': result.monthlyRevenue,
         'monthly_fuel_cost': result.monthlyFuelCost,
@@ -456,11 +556,13 @@ class _AddEvaluationScreenState extends State<AddEvaluationScreen> {
             padding: const EdgeInsets.only(bottom: 12),
             child: Text(
               assessmentLoadError!,
-              style: const TextStyle(color: Colors.black54),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
           ),
         DropdownButtonFormField<String>(
-          value: selectedAssessment?.id ?? '',
+          initialValue: selectedAssessment?.id ?? '',
           isExpanded: true,
           // The selected form-field value has less vertical space than a menu
           // entry. Keep it to one line; the menu itself can show two lines.
@@ -541,7 +643,7 @@ class _AddEvaluationScreenState extends State<AddEvaluationScreen> {
     final price = officialFuelPrice;
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
-      color: const Color(0xFFE8F5EE),
+      color: Theme.of(context).colorScheme.primaryContainer,
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
@@ -553,7 +655,7 @@ class _AddEvaluationScreenState extends State<AddEvaluationScreen> {
             ),
             const SizedBox(height: 8),
             DropdownButtonFormField<OfficialFuelProduct>(
-              value: selectedFuelProduct,
+              initialValue: selectedFuelProduct,
               decoration: const InputDecoration(
                 labelText: 'Fuel Product',
                 isDense: true,
@@ -680,7 +782,7 @@ class _AddEvaluationScreenState extends State<AddEvaluationScreen> {
         StationAssessmentGeographicStatus.inside;
     return Card(
       margin: const EdgeInsets.only(top: 12, bottom: 8),
-      color: const Color(0xFFE8F5EE),
+      color: Theme.of(context).colorScheme.primaryContainer,
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
@@ -705,9 +807,12 @@ class _AddEvaluationScreenState extends State<AddEvaluationScreen> {
               'Competitor distance: ${assessment.competitorDistanceKm.toStringAsFixed(2)} km',
             ),
             const SizedBox(height: 4),
-            const Text(
+            Text(
               'This is context only and is not a permanent database relationship.',
-              style: TextStyle(fontSize: 12, color: Colors.black54),
+              style: TextStyle(
+                fontSize: 12,
+                color: Theme.of(context).colorScheme.onPrimaryContainer,
+              ),
             ),
           ],
         ),
@@ -733,10 +838,28 @@ class _AddEvaluationScreenState extends State<AddEvaluationScreen> {
     bool number = false,
     bool decimal = false,
   }) {
+    final errorText = fieldErrors[label];
+    final maximum = _numericMaximums[label];
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: TextField(
         controller: controller,
+        onChanged: (_) {
+          if (!fieldErrors.containsKey(label)) return;
+          setState(() {
+            fieldErrors = Map.of(fieldErrors)..remove(label);
+          });
+        },
+        inputFormatters: maximum == null
+            ? null
+            : [
+                TextInputFormatter.withFunction((oldValue, newValue) {
+                  final entered = double.tryParse(newValue.text);
+                  return entered == null || entered <= maximum
+                      ? newValue
+                      : oldValue;
+                }),
+              ],
         keyboardType: decimal
             ? const TextInputType.numberWithOptions(decimal: true)
             : number
@@ -745,6 +868,7 @@ class _AddEvaluationScreenState extends State<AddEvaluationScreen> {
         decoration: InputDecoration(
           labelText: label,
           hintText: hint,
+          errorText: errorText,
           prefixIcon: Icon(icon),
         ),
       ),

@@ -46,9 +46,11 @@ class EvaluationResultScreen extends StatelessWidget {
             style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 20),
-          scoreCard(color),
+          scoreCard(context, color),
           const SizedBox(height: 18),
-          metricsGrid(),
+          calculationCard(context),
+          const SizedBox(height: 18),
+          metricsGrid(context),
           const SizedBox(height: 18),
           financialChart(context),
           const SizedBox(height: 18),
@@ -66,12 +68,15 @@ class EvaluationResultScreen extends StatelessWidget {
             content: result.explanation,
             color: const Color(0xFF168C4B),
           ),
-          const Padding(
+          Padding(
             padding: EdgeInsets.symmetric(horizontal: 8),
             child: Text(
               'Estimates are for decision-support purposes and depend on the assumptions entered.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.black54, fontSize: 12),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontSize: 12,
+              ),
             ),
           ),
           const SizedBox(height: 6),
@@ -95,7 +100,7 @@ class EvaluationResultScreen extends StatelessWidget {
     );
   }
 
-  Widget scoreCard(Color color) {
+  Widget scoreCard(BuildContext context, Color color) {
     return Container(
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
@@ -115,9 +120,11 @@ class EvaluationResultScreen extends StatelessWidget {
               color: color,
             ),
           ),
-          const Text(
+          Text(
             'Profitability Score / 100',
-            style: TextStyle(color: Colors.black54),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
           const SizedBox(height: 10),
           Text(
@@ -133,41 +140,77 @@ class EvaluationResultScreen extends StatelessWidget {
     );
   }
 
-  Widget metricsGrid() {
+  Widget calculationCard(BuildContext context) {
+    return Card(
+      child: ListTile(
+        leading: const Icon(Icons.calculate_outlined),
+        title: const Text(
+          'How profit and score are calculated',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        subtitle: const Text('Tap to see the formulas and scoring weights.'),
+        trailing: const Icon(Icons.info_outline),
+        onTap: () => showInformationDialog(
+          context,
+          title: 'Profitability calculation',
+          message:
+              'Monthly sales volume = daily customers × average litres × 30.\n\n'
+              'Monthly revenue = monthly sales volume × selling price.\n\n'
+              'Monthly operating cost = fuel purchase cost + rent + staff salaries + utilities + maintenance + other entered costs.\n\n'
+              'Monthly profit = monthly revenue − monthly operating cost.\n\n'
+              'Profit margin = monthly profit ÷ monthly revenue × 100.\n'
+              'Annual ROI = monthly profit × 12 ÷ initial investment × 100.\n'
+              'Break-even months = initial investment ÷ monthly profit, when profit is positive.\n\n'
+              'The 0–100 profitability score weights profit margin (40%), annual ROI (25%), break-even period (20%), and monthly demand (15%). Scores are capped at 100.\n\n'
+              'Profitable requires a score of at least 70 and positive monthly profit. Moderate Risk requires at least 45 and positive monthly profit; otherwise it is High Risk.',
+        ),
+      ),
+    );
+  }
+
+  Widget metricsGrid(BuildContext context) {
     return GridView.count(
       crossAxisCount: 2,
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       crossAxisSpacing: 12,
       mainAxisSpacing: 12,
-      childAspectRatio: 1.45,
+      // Leave enough height for values such as “Not currently profitable” on
+      // narrow phones without allowing the final Break-even card to overflow.
+      childAspectRatio: 1.18,
       children: [
         metricCard(
+          context,
           'Monthly Revenue',
           'RM${result.monthlyRevenue.toStringAsFixed(2)}',
           Icons.payments_outlined,
         ),
         metricCard(
+          context,
           'Monthly Profit',
           'RM${result.monthlyProfit.toStringAsFixed(2)}',
           Icons.trending_up,
         ),
         metricCard(
+          context,
           'Profit Margin',
-          '${result.profitMargin.toStringAsFixed(1)}%',
+          '${result.profitMargin.toStringAsFixed(2)}%',
           Icons.percent,
         ),
         metricCard(
+          context,
           'Annual ROI',
-          '${result.roi.toStringAsFixed(1)}%',
+          '${result.roi.toStringAsFixed(2)}%',
           Icons.assessment_outlined,
         ),
         metricCard(
+          context,
           'Sales Volume',
           '${result.monthlySalesVolume.toStringAsFixed(0)} L',
           Icons.local_gas_station_outlined,
         ),
         metricCard(
+          context,
           'Break-even',
           result.breakEvenMonths == null
               ? 'Not currently profitable'
@@ -178,25 +221,42 @@ class EvaluationResultScreen extends StatelessWidget {
     );
   }
 
-  Widget metricCard(String title, String value, IconData icon) {
+  Widget metricCard(
+    BuildContext context,
+    String title,
+    String value,
+    IconData icon,
+  ) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, color: const Color(0xFF168C4B)),
-            const SizedBox(height: 7),
+            Icon(icon, color: const Color(0xFF168C4B), size: 22),
+            const SizedBox(height: 5),
             Text(
               title,
               textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.black54, fontSize: 12),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontSize: 12,
+              ),
             ),
             const SizedBox(height: 4),
-            Text(
-              value,
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+            Flexible(
+              child: Text(
+                value,
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
+              ),
             ),
           ],
         ),
@@ -261,7 +321,7 @@ class EvaluationResultScreen extends StatelessWidget {
                     drawVerticalLine: false,
                     horizontalInterval: chartMaximum / 4,
                     getDrawingHorizontalLine: (value) => FlLine(
-                      color: Colors.black12,
+                      color: Theme.of(context).dividerColor,
                       strokeWidth: value == 0 ? 1.2 : 0.7,
                     ),
                   ),
@@ -465,7 +525,7 @@ class EvaluationResultScreen extends StatelessWidget {
   ]) {
     final percentage = total == null || total <= 0
         ? ''
-        : ' (${(value / total * 100).toStringAsFixed(1)}%)';
+        : ' (${(value / total * 100).toStringAsFixed(2)}%)';
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -484,13 +544,13 @@ class EvaluationResultScreen extends StatelessWidget {
   }
 
   String percentageText(double value, double total) =>
-      total <= 0 ? '0%' : '${(value / total * 100).toStringAsFixed(0)}%';
+      total <= 0 ? '0.00%' : '${(value / total * 100).toStringAsFixed(2)}%';
 
   String formatAxisCurrency(double value) {
     if (value.abs() >= 1000) {
-      return 'RM${(value / 1000).toStringAsFixed(0)}k';
+      return 'RM${(value / 1000).toStringAsFixed(2)}k';
     }
-    return 'RM${value.toStringAsFixed(0)}';
+    return 'RM${value.toStringAsFixed(2)}';
   }
 
   void showInformationDialog(

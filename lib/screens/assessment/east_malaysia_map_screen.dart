@@ -257,7 +257,11 @@ class _EastMalaysiaMapScreenState extends State<EastMalaysiaMapScreen> {
             siteFactorIntelligenceResult == null)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && validationResult == initialValidation) {
-          unawaited(loadSiteIntelligence(initialValidation!));
+          if (siteFactorIntelligenceResult == null) {
+            unawaited(loadSiteIntelligence(initialValidation!));
+          } else if (nearbyFuelStationResult == null) {
+            unawaited(loadNearbyFuelStations(initialValidation!));
+          }
         }
       });
     }
@@ -302,6 +306,11 @@ class _EastMalaysiaMapScreenState extends State<EastMalaysiaMapScreen> {
       selectedPoint = point;
       validationResult = null;
       validationError = null;
+      // A previous candidate's asynchronous lookups are no longer relevant.
+      // Their completion is guarded by the validation-result identity below,
+      // so reset these flags to allow the newly selected site to load.
+      isLoadingNearbyFuelStations = false;
+      isLoadingSiteFactorIntelligence = false;
       nearbyFuelStationResult = null;
       nearbyFuelStationError = null;
       siteFactorIntelligenceResult = null;
@@ -316,6 +325,10 @@ class _EastMalaysiaMapScreenState extends State<EastMalaysiaMapScreen> {
       selectedRadiusKm = radiusKm;
       validationResult = null;
       validationError = null;
+      // Changing the radius creates a new candidate and must not inherit a
+      // pending lookup state from the previous candidate.
+      isLoadingNearbyFuelStations = false;
+      isLoadingSiteFactorIntelligence = false;
       nearbyFuelStationResult = null;
       nearbyFuelStationError = null;
       siteFactorIntelligenceResult = null;
@@ -344,6 +357,14 @@ class _EastMalaysiaMapScreenState extends State<EastMalaysiaMapScreen> {
         validationResult = result;
         selectedPoint = result.candidate.point;
         selectedRadiusKm = result.candidate.analysisRadiusKm;
+        // Every authoritative validation is a fresh candidate snapshot. Do
+        // not let an earlier request suppress the new nearby/site-data load.
+        isLoadingNearbyFuelStations = false;
+        isLoadingSiteFactorIntelligence = false;
+        nearbyFuelStationResult = null;
+        nearbyFuelStationError = null;
+        siteFactorIntelligenceResult = null;
+        siteFactorIntelligenceError = null;
         showAllNearbyFuelStations = false;
       });
       if (result.candidate.isValidatedInside) {
@@ -400,13 +421,7 @@ class _EastMalaysiaMapScreenState extends State<EastMalaysiaMapScreen> {
   Future<void> loadSiteIntelligence(
     EastMalaysiaSiteValidationResult result,
   ) async {
-    if (!result.candidate.isValidatedInside) return;
-
-    if (nearbyFuelStationResult == null && !isLoadingNearbyFuelStations) {
-      await loadNearbyFuelStations(result);
-    }
-    if (!mounted ||
-        validationResult != result ||
+    if (!result.candidate.isValidatedInside ||
         isLoadingSiteFactorIntelligence) {
       return;
     }
@@ -416,6 +431,14 @@ class _EastMalaysiaMapScreenState extends State<EastMalaysiaMapScreen> {
       siteFactorIntelligenceError = null;
     });
     try {
+      // Both functions use fixed, bounded Overpass queries. Give the nearby
+      // station lookup priority rather than issuing two public OSM requests
+      // at once, which can cause a temporary upstream queue or rate limit.
+      if (nearbyFuelStationResult == null && !isLoadingNearbyFuelStations) {
+        await loadNearbyFuelStations(result);
+      }
+      if (!mounted || validationResult != result) return;
+
       final intelligence = await siteFactorIntelligenceLoader(result);
       if (!mounted || validationResult != result) return;
       setState(() {
@@ -492,7 +515,8 @@ class _EastMalaysiaMapScreenState extends State<EastMalaysiaMapScreen> {
         child: Column(
           children: [
             Text(
-              nearbyFuelStationError!,
+              'Nearby fuel-station lookup did not respond. Retry uses the '
+              'same selected location and radius.',
               key: const ValueKey('nearby-fuel-stations-error'),
               textAlign: TextAlign.center,
               style: const TextStyle(color: Color(0xFFC62828)),
@@ -509,65 +533,70 @@ class _EastMalaysiaMapScreenState extends State<EastMalaysiaMapScreen> {
 
     final stations = nearbyFuelStationResult;
     if (stations == null) return const SizedBox.shrink();
+    final colors = Theme.of(context).colorScheme;
     final nearest = stations.nearestDistanceKm;
     final visibleStations = showAllNearbyFuelStations
         ? stations.stations
         : stations.stations.take(5).toList(growable: false);
     return Padding(
       padding: const EdgeInsets.only(top: 8),
-      child: DecoratedBox(
+      child: Material(
         key: const ValueKey('nearby-fuel-stations-summary'),
-        decoration: const BoxDecoration(
-          color: Color(0xFFE7F3EC),
-          borderRadius: BorderRadius.all(Radius.circular(12)),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(8),
-          child: Column(
-            children: [
-              Text('Nearby fuel stations: ${stations.stationCount}'),
-              Text(
-                nearest == null
-                    ? 'Nearest competitor: none within the analysis radius'
-                    : 'Nearest competitor: ${nearest.toStringAsFixed(2)} km',
-              ),
-              if (visibleStations.isNotEmpty) ...[
-                const SizedBox(height: 6),
-                SizedBox(
-                  height: 120,
-                  child: ListView.separated(
+        color: colors.primaryContainer,
+        borderRadius: BorderRadius.circular(12),
+        child: DefaultTextStyle.merge(
+          style: TextStyle(color: colors.onPrimaryContainer),
+          child: Padding(
+            padding: const EdgeInsets.all(8),
+            child: Column(
+              children: [
+                Text('Nearby fuel stations: ${stations.stationCount}'),
+                Text(
+                  nearest == null
+                      ? 'Nearest competitor: none within the analysis radius'
+                      : 'Nearest competitor: ${nearest.toStringAsFixed(2)} km',
+                ),
+                if (visibleStations.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Column(
                     key: const ValueKey('nearby-fuel-stations-list'),
-                    primary: false,
-                    itemCount: visibleStations.length,
-                    separatorBuilder: (_, _) => const Divider(height: 1),
-                    itemBuilder: (context, index) {
-                      final station = visibleStations[index];
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 5),
-                        child: Text(
-                          '${station.name ?? station.brand ?? station.operatorName ?? 'Unnamed station'} '
-                          '(${station.distanceKm.toStringAsFixed(2)} km)',
+                    children: [
+                      for (
+                        var index = 0;
+                        index < visibleStations.length;
+                        index++
+                      ) ...[
+                        if (index > 0) const Divider(height: 1),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 5),
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              '${visibleStations[index].name ?? visibleStations[index].brand ?? visibleStations[index].operatorName ?? 'Unnamed station'} '
+                              '(${visibleStations[index].distanceKm.toStringAsFixed(2)} km)',
+                            ),
+                          ),
                         ),
-                      );
+                      ],
+                    ],
+                  ),
+                ],
+                if (stations.stationCount > 5)
+                  TextButton(
+                    key: const ValueKey('toggle-nearby-fuel-stations-button'),
+                    onPressed: () {
+                      setState(() {
+                        showAllNearbyFuelStations = !showAllNearbyFuelStations;
+                      });
                     },
+                    child: Text(
+                      showAllNearbyFuelStations
+                          ? 'Show less'
+                          : 'View all stations (${stations.stationCount})',
+                    ),
                   ),
-                ),
               ],
-              if (stations.stationCount > 5)
-                TextButton(
-                  key: const ValueKey('toggle-nearby-fuel-stations-button'),
-                  onPressed: () {
-                    setState(() {
-                      showAllNearbyFuelStations = !showAllNearbyFuelStations;
-                    });
-                  },
-                  child: Text(
-                    showAllNearbyFuelStations
-                        ? 'Show less'
-                        : 'View all stations (${stations.stationCount})',
-                  ),
-                ),
-            ],
+            ),
           ),
         ),
       ),
@@ -580,7 +609,7 @@ class _EastMalaysiaMapScreenState extends State<EastMalaysiaMapScreen> {
       return const SizedBox.shrink();
     }
     if (isLoadingSiteFactorIntelligence) {
-      return const Padding(
+      return Padding(
         padding: EdgeInsets.only(top: 8),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -591,41 +620,55 @@ class _EastMalaysiaMapScreenState extends State<EastMalaysiaMapScreen> {
               child: CircularProgressIndicator(strokeWidth: 2),
             ),
             SizedBox(width: 8),
-            Text('Loading site data...'),
+            Text(
+              isLoadingNearbyFuelStations
+                  ? 'Preparing site data...'
+                  : 'Loading site data...',
+            ),
           ],
         ),
       );
     }
     final intelligence = siteFactorIntelligenceResult;
     if (intelligence != null) {
+      final colors = Theme.of(context).colorScheme;
       return Padding(
         padding: const EdgeInsets.only(top: 8),
         child: Material(
           key: const ValueKey('site-factor-intelligence-summary'),
-          color: const Color(0xFFE7F3EC),
+          color: colors.primaryContainer,
           borderRadius: BorderRadius.circular(12),
           clipBehavior: Clip.antiAlias,
           child: ExpansionTile(
+            textColor: colors.onPrimaryContainer,
+            collapsedTextColor: colors.onPrimaryContainer,
+            iconColor: colors.onPrimaryContainer,
+            collapsedIconColor: colors.onPrimaryContainer,
             tilePadding: const EdgeInsets.symmetric(horizontal: 12),
             childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
             dense: true,
-            title: const Text(
-              'Site Data Suggestions',
-              style: TextStyle(fontWeight: FontWeight.bold),
+            title: const Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Site Data',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
             ),
-            subtitle: const Text(
-              'Tap to view available estimates and scores',
-              style: TextStyle(fontSize: 12),
+            subtitle: const Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Estimated values and suggested scores',
+                style: TextStyle(fontSize: 12),
+              ),
             ),
             children: [
               ...buildSiteDataEvidenceLines(intelligence),
               const Padding(
                 padding: EdgeInsets.only(top: 6),
                 child: Text(
-                  'Available estimates and suggested scores fill only empty '
-                  'assessment fields after you use this candidate. You can edit '
-                  'every value. Registered Vehicle Count remains manual.',
-                  style: TextStyle(fontSize: 12, color: Colors.black54),
+                  'Fills blank fields only. All values remain editable; '
+                  'vehicle count is manual.',
+                  style: TextStyle(fontSize: 12),
                 ),
               ),
             ],
@@ -662,8 +705,7 @@ class _EastMalaysiaMapScreenState extends State<EastMalaysiaMapScreen> {
     final population = intelligence.population;
     if (population.hasUsableSuggestion) {
       lines.add(
-        'Estimated population density: '
-        '${population.densityPerSqKm!.toStringAsFixed(2)} '
+        'Population: ~${population.densityPerSqKm!.toStringAsFixed(0)} '
         'people/km²${population.dataYear == null ? '' : ' (${population.dataYear})'}',
       );
     }
@@ -671,40 +713,40 @@ class _EastMalaysiaMapScreenState extends State<EastMalaysiaMapScreen> {
     final road = intelligence.roadAccessibility;
     if (road.hasUsableSuggestion) {
       lines.add(
-        'Road accessibility — Suggested score: ${road.suggestedScore}/5'
-        '${road.majorRoadCount == null ? '' : ' · ${road.majorRoadCount} major-road features'}',
+        'Road access: ${road.suggestedScore}/5'
+        '${road.majorRoadCount == null ? '' : ' · ${road.majorRoadCount} major roads'}',
       );
     }
 
     final commercial = intelligence.commercialActivity;
     if (commercial.hasUsableSuggestion) {
       lines.add(
-        'Commercial activity — Suggested score: ${commercial.suggestedScore}/5'
-        '${commercial.commercialPoiCount == null ? '' : ' · ${commercial.commercialPoiCount} mapped POIs'}',
+        'Commercial: ${commercial.suggestedScore}/5'
+        '${commercial.commercialPoiCount == null ? '' : ' · ${commercial.commercialPoiCount} POIs'}',
       );
     }
 
     final residential = intelligence.residentialActivity;
     if (residential.hasUsableSuggestion) {
       lines.add(
-        'Residential activity — Suggested score: ${residential.suggestedScore}/5'
-        '${residential.residentialFeatureCount == null ? '' : ' · ${residential.residentialFeatureCount} mapped features'}',
+        'Residential: ${residential.suggestedScore}/5'
+        '${residential.residentialFeatureCount == null ? '' : ' · ${residential.residentialFeatureCount} features'}',
       );
     }
 
     final land = intelligence.landAccessibility;
     if (land.hasUsableSuggestion) {
       lines.add(
-        'Land accessibility proxy — Suggested score: ${land.suggestedScore}/5'
-        '${land.nearestAccessRoadM == null ? '' : ' · ${land.nearestAccessRoadM!.toStringAsFixed(0)} m to nearest access road'}',
+        'Land access proxy: ${land.suggestedScore}/5'
+        '${land.nearestAccessRoadM == null ? '' : ' · ${land.nearestAccessRoadM!.toStringAsFixed(0)} m to road'}',
       );
     }
 
     final vehicle = intelligence.vehicleDemand;
     if (vehicle.available && vehicle.isProxy && vehicle.value != null) {
       lines.add(
-        'Regional vehicle-registration proxy (reference only): '
-        '${vehicle.value} records — not a count within this selected radius',
+        'Vehicle proxy: ${vehicle.value} regional registrations '
+        '(reference only)',
       );
     }
 
@@ -714,9 +756,12 @@ class _EastMalaysiaMapScreenState extends State<EastMalaysiaMapScreen> {
 
     return lines
         .map(
-          (line) => Padding(
-            padding: const EdgeInsets.only(bottom: 2),
-            child: Text(line, style: const TextStyle(fontSize: 13)),
+          (line) => Align(
+            alignment: Alignment.centerLeft,
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 2),
+              child: Text(line, style: const TextStyle(fontSize: 13)),
+            ),
           ),
         )
         .toList(growable: false);
@@ -725,6 +770,26 @@ class _EastMalaysiaMapScreenState extends State<EastMalaysiaMapScreen> {
   @override
   Widget build(BuildContext context) {
     final currentCandidate = candidate;
+    final colors = Theme.of(context).colorScheme;
+    final isLandscape =
+        MediaQuery.orientationOf(context) == Orientation.landscape;
+    final showCompactLandscapePrompt = isLandscape && currentCandidate == null;
+    final validationStatus = validationResult?.candidate.validationStatus;
+    final isValidatedInside =
+        validationStatus == GeographicValidationStatus.inside;
+    final isRejected =
+        validationStatus == GeographicValidationStatus.outside ||
+        validationStatus == GeographicValidationStatus.boundaryReviewRequired;
+    final validationBackground = isValidatedInside
+        ? colors.primaryContainer
+        : isRejected
+        ? colors.errorContainer
+        : colors.surfaceContainerHighest;
+    final validationForeground = isValidatedInside
+        ? colors.onPrimaryContainer
+        : isRejected
+        ? colors.onErrorContainer
+        : colors.onSurfaceVariant;
 
     return Scaffold(
       appBar: AppBar(
@@ -735,32 +800,35 @@ class _EastMalaysiaMapScreenState extends State<EastMalaysiaMapScreen> {
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Padding(
-            padding: EdgeInsets.fromLTRB(16, 12, 16, 6),
-            child: Text(
-              'Sabah • Sarawak • Labuan',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-          ),
-          const Padding(
-            padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: Color(0xFFE7F3EC),
-                borderRadius: BorderRadius.all(Radius.circular(12)),
+          if (!isLandscape) ...[
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 12, 16, 6),
+              child: Text(
+                'Sabah • Sarawak • Labuan',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
-              child: Padding(
-                padding: EdgeInsets.all(10),
-                child: Text(
-                  'The map viewport is for navigation only. Territory '
-                  'eligibility will be determined by authoritative boundary '
-                  'validation.',
-                  textAlign: TextAlign.center,
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Material(
+                color: Theme.of(context).colorScheme.primaryContainer,
+                borderRadius: BorderRadius.circular(12),
+                child: Padding(
+                  padding: const EdgeInsets.all(10),
+                  child: Text(
+                    'The map viewport is for navigation only. Territory '
+                    'eligibility will be determined by authoritative boundary '
+                    'validation.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onPrimaryContainer,
+                    ),
+                  ),
                 ),
               ),
             ),
-          ),
+          ],
           Expanded(
             child:
                 widget.mapContentBuilder?.call(
@@ -776,158 +844,334 @@ class _EastMalaysiaMapScreenState extends State<EastMalaysiaMapScreen> {
           ),
           SafeArea(
             top: false,
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                maxHeight: MediaQuery.sizeOf(context).height * 0.5,
-              ),
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-                keyboardDismissBehavior:
-                    ScrollViewKeyboardDismissBehavior.onDrag,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    if (currentCandidate == null)
-                      const Text(
-                        'Tap the map to choose a candidate point.',
-                        textAlign: TextAlign.center,
-                      )
-                    else
-                      Text(
-                        'Latitude: '
-                        '${currentCandidate.point.latitude.toStringAsFixed(5)}  '
-                        'Longitude: '
-                        '${currentCandidate.point.longitude.toStringAsFixed(5)}',
-                        key: const ValueKey('selected-coordinate-summary'),
-                        textAlign: TextAlign.center,
-                      ),
-                    const SizedBox(height: 6),
-                    DecoratedBox(
-                      key: const ValueKey('site-validation-summary'),
-                      decoration: BoxDecoration(
-                        color:
-                            validationResult?.candidate.isValidatedInside ==
-                                true
-                            ? const Color(0xFFE7F3EC)
-                            : const Color(0xFFFFEBEE),
-                        borderRadius: const BorderRadius.all(
-                          Radius.circular(12),
-                        ),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(10),
-                        child: Text(
+            child: showCompactLandscapePrompt
+                ? Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
                           validationStatusText,
                           textAlign: TextAlign.center,
                           style: TextStyle(
-                            color: validationStatusColor,
-                            fontWeight: FontWeight.bold,
+                            color: colors.onSurfaceVariant,
+                            fontSize: 12,
                           ),
                         ),
-                      ),
-                    ),
-                    if (validationError != null)
-                      Text(
-                        validationError!,
-                        key: const ValueKey('validation-error-message'),
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(color: Color(0xFFC62828)),
-                      ),
-                    buildNearbyFuelStationStatus(),
-                    buildSiteFactorIntelligenceStatus(),
-                    const Text(
-                      'The radius circle is analysis context, not proof of '
-                      'territory eligibility.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 12, color: Colors.black54),
-                    ),
-                    if (widget.allowCandidateUpdate) ...[
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          const Text('Analysis radius:'),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: DropdownButton<double>(
-                              key: const ValueKey('analysis-radius-dropdown'),
-                              value: selectedRadiusKm,
-                              isExpanded: true,
-                              items: AssessmentSiteCandidate
-                                  .supportedAnalysisRadiiKm
-                                  .map(
-                                    (radius) => DropdownMenuItem<double>(
-                                      value: radius,
-                                      child: Text(
-                                        '${radius.toStringAsFixed(0)} km',
-                                      ),
+                        const SizedBox(height: 3),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.touch_app_outlined,
+                              size: 18,
+                              color: colors.onSurfaceVariant,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Tap the map to choose a candidate point.',
+                              style: TextStyle(color: colors.onSurfaceVariant),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 5),
+                        Row(
+                          children: [
+                            if (widget.allowCandidateUpdate) ...[
+                              Expanded(
+                                child: DropdownButtonHideUnderline(
+                                  child: DropdownButton<double>(
+                                    key: const ValueKey(
+                                      'analysis-radius-dropdown',
                                     ),
-                                  )
-                                  .toList(growable: false),
-                              onChanged: isValidating
-                                  ? null
-                                  : (radius) {
-                                      if (radius != null) {
-                                        changeRadius(radius);
-                                      }
-                                    },
+                                    value: selectedRadiusKm,
+                                    isExpanded: true,
+                                    items: AssessmentSiteCandidate
+                                        .supportedAnalysisRadiiKm
+                                        .map(
+                                          (radius) => DropdownMenuItem<double>(
+                                            value: radius,
+                                            child: Text(
+                                              '${radius.toStringAsFixed(0)} km',
+                                            ),
+                                          ),
+                                        )
+                                        .toList(growable: false),
+                                    onChanged: isValidating
+                                        ? null
+                                        : (radius) {
+                                            if (radius != null) {
+                                              changeRadius(radius);
+                                            }
+                                          },
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                            ],
+                            Expanded(
+                              child: ElevatedButton(
+                                key: const ValueKey('validate-site-button'),
+                                onPressed:
+                                    currentCandidate == null || isValidating
+                                    ? null
+                                    : validateCandidate,
+                                style: ElevatedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 8,
+                                  ),
+                                ),
+                                child: Text(
+                                  isValidating ? 'Validating...' : 'Validate',
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      ElevatedButton(
-                        key: const ValueKey('validate-site-button'),
-                        onPressed: currentCandidate == null || isValidating
-                            ? null
-                            : validateCandidate,
-                        child: Text(
-                          isValidating ? 'Validating...' : 'Validate Site',
+                            if (widget.allowCandidateUpdate) ...[
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: ElevatedButton(
+                                  key: const ValueKey('use-candidate-button'),
+                                  onPressed:
+                                      !isValidating &&
+                                          validationResult
+                                                  ?.candidate
+                                                  .isValidatedInside ==
+                                              true
+                                      ? () => Navigator.pop(
+                                          context,
+                                          EastMalaysiaMapSelection(
+                                            validationResult: validationResult!,
+                                            nearbyFuelStations:
+                                                nearbyFuelStationResult,
+                                            siteFactorIntelligence:
+                                                siteFactorIntelligenceResult,
+                                          ),
+                                        )
+                                      : null,
+                                  style: ElevatedButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 8,
+                                    ),
+                                  ),
+                                  child: const Text(
+                                    'Use',
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
-                      ),
-                    ],
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextButton(
-                            onPressed: () => Navigator.pop(context),
-                            child: Text(
-                              widget.allowCandidateUpdate ? 'Cancel' : 'Close',
-                            ),
-                          ),
-                        ),
-                        if (widget.allowCandidateUpdate) ...[
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: ElevatedButton(
-                              key: const ValueKey('use-candidate-button'),
-                              onPressed:
-                                  !isValidating &&
-                                      validationResult
-                                              ?.candidate
-                                              .isValidatedInside ==
-                                          true
-                                  ? () => Navigator.pop(
-                                      context,
-                                      EastMalaysiaMapSelection(
-                                        validationResult: validationResult!,
-                                        nearbyFuelStations:
-                                            nearbyFuelStationResult,
-                                        siteFactorIntelligence:
-                                            siteFactorIntelligenceResult,
-                                      ),
-                                    )
-                                  : null,
-                              child: const Text('Use This Candidate'),
-                            ),
-                          ),
-                        ],
                       ],
                     ),
-                  ],
-                ),
-              ),
-            ),
+                  )
+                : ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxHeight:
+                          MediaQuery.sizeOf(context).height *
+                          (isLandscape ? 0.36 : 0.5),
+                    ),
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+                      keyboardDismissBehavior:
+                          ScrollViewKeyboardDismissBehavior.onDrag,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          if (currentCandidate == null)
+                            const Text(
+                              'Tap the map to choose a candidate point.',
+                              textAlign: TextAlign.center,
+                            )
+                          else
+                            Text(
+                              'Latitude: '
+                              '${currentCandidate.point.latitude.toStringAsFixed(5)}  '
+                              'Longitude: '
+                              '${currentCandidate.point.longitude.toStringAsFixed(5)}',
+                              key: const ValueKey(
+                                'selected-coordinate-summary',
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          const SizedBox(height: 6),
+                          DecoratedBox(
+                            key: const ValueKey('site-validation-summary'),
+                            decoration: BoxDecoration(
+                              color: validationBackground,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: isValidatedInside
+                                    ? colors.primary.withValues(alpha: 0.45)
+                                    : colors.outlineVariant,
+                              ),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.all(10),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    isValidatedInside
+                                        ? Icons.verified_outlined
+                                        : Icons.info_outline,
+                                    color: validationForeground,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      validationStatusText,
+                                      style: TextStyle(
+                                        color: validationForeground,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          if (validationError != null)
+                            Text(
+                              validationError!,
+                              key: const ValueKey('validation-error-message'),
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(color: Color(0xFFC62828)),
+                            ),
+                          buildNearbyFuelStationStatus(),
+                          buildSiteFactorIntelligenceStatus(),
+                          Text(
+                            'The radius circle is analysis context, not proof of '
+                            'territory eligibility.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                          if (widget.allowCandidateUpdate) ...[
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                const Text('Analysis radius:'),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: DropdownButton<double>(
+                                    key: const ValueKey(
+                                      'analysis-radius-dropdown',
+                                    ),
+                                    value: selectedRadiusKm,
+                                    isExpanded: true,
+                                    items: AssessmentSiteCandidate
+                                        .supportedAnalysisRadiiKm
+                                        .map(
+                                          (radius) => DropdownMenuItem<double>(
+                                            value: radius,
+                                            child: Text(
+                                              '${radius.toStringAsFixed(0)} km',
+                                            ),
+                                          ),
+                                        )
+                                        .toList(growable: false),
+                                    onChanged: isValidating
+                                        ? null
+                                        : (radius) {
+                                            if (radius != null) {
+                                              changeRadius(radius);
+                                            }
+                                          },
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            ElevatedButton(
+                              key: const ValueKey('validate-site-button'),
+                              onPressed:
+                                  currentCandidate == null || isValidating
+                                  ? null
+                                  : validateCandidate,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF168C4B),
+                                foregroundColor: Colors.white,
+                                disabledBackgroundColor: Theme.of(
+                                  context,
+                                ).colorScheme.surfaceContainerHighest,
+                                disabledForegroundColor: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 14,
+                                ),
+                              ),
+                              child: Text(
+                                isValidating
+                                    ? 'Validating...'
+                                    : 'Validate Site',
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextButton(
+                                  onPressed: () => Navigator.pop(context),
+                                  child: Text(
+                                    widget.allowCandidateUpdate
+                                        ? 'Cancel'
+                                        : 'Close',
+                                  ),
+                                ),
+                              ),
+                              if (widget.allowCandidateUpdate) ...[
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: ElevatedButton(
+                                    key: const ValueKey('use-candidate-button'),
+                                    onPressed:
+                                        !isValidating &&
+                                            validationResult
+                                                    ?.candidate
+                                                    .isValidatedInside ==
+                                                true
+                                        ? () => Navigator.pop(
+                                            context,
+                                            EastMalaysiaMapSelection(
+                                              validationResult:
+                                                  validationResult!,
+                                              nearbyFuelStations:
+                                                  nearbyFuelStationResult,
+                                              siteFactorIntelligence:
+                                                  siteFactorIntelligenceResult,
+                                            ),
+                                          )
+                                        : null,
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: const Color(0xFF168C4B),
+                                      foregroundColor: Colors.white,
+                                      disabledBackgroundColor: Theme.of(
+                                        context,
+                                      ).colorScheme.surfaceContainerHighest,
+                                      disabledForegroundColor: Theme.of(
+                                        context,
+                                      ).colorScheme.onSurfaceVariant,
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 14,
+                                      ),
+                                    ),
+                                    child: const Text('Use This Candidate'),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
           ),
         ],
       ),
@@ -953,8 +1197,8 @@ class _ProductionEastMalaysiaMap extends StatelessWidget {
       const LatLng(7.7, 119.8),
     );
 
-    // These camera bounds only keep navigation near the supported region.
-    // They are deliberately not East Malaysia validation boundaries.
+    // Camera bounds only keep navigation near the supported region. They are
+    // deliberately not the authoritative East Malaysia validation boundary.
     final regionalCameraBounds = LatLngBounds(
       const LatLng(-1.5, 107.0),
       const LatLng(9.0, 121.5),

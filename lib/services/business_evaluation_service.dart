@@ -59,32 +59,25 @@ class BusinessEvaluationService {
       throw ArgumentError('Evaluation inputs cannot be negative.');
     }
     if (fuelPrice <= fuelPurchaseCost) {
-      throw ArgumentError(
-        'Selling price must be greater than purchase cost.',
-      );
+      throw ArgumentError('Selling price must be greater than purchase cost.');
     }
 
-    final monthlySalesVolume =
-        dailyCustomers * averageLitres * 30;
+    final monthlySalesVolume = dailyCustomers * averageLitres * 30;
 
-    final monthlyRevenue =
-        monthlySalesVolume * fuelPrice;
+    final monthlyRevenue = monthlySalesVolume * fuelPrice;
 
-    final monthlyFuelCost =
-        monthlySalesVolume * fuelPurchaseCost;
+    final monthlyFuelCost = monthlySalesVolume * fuelPurchaseCost;
 
     final fixedOperatingCost =
         monthlyRental +
-            monthlyStaffSalary +
-            monthlyUtilities +
-            monthlyMaintenance +
-            monthlyOtherCost;
+        monthlyStaffSalary +
+        monthlyUtilities +
+        monthlyMaintenance +
+        monthlyOtherCost;
 
-    final monthlyOperatingCost =
-        monthlyFuelCost + fixedOperatingCost;
+    final monthlyOperatingCost = monthlyFuelCost + fixedOperatingCost;
 
-    final monthlyProfit =
-        monthlyRevenue - monthlyOperatingCost;
+    final monthlyProfit = monthlyRevenue - monthlyOperatingCost;
 
     final profitMargin = monthlyRevenue == 0
         ? 0.0
@@ -107,38 +100,30 @@ class BusinessEvaluationService {
       roi,
     ]);
 
-    final double? breakEvenMonths =
-    monthlyProfit > 0 && initialInvestment > 0
+    final double? breakEvenMonths = monthlyProfit > 0 && initialInvestment > 0
         ? initialInvestment / monthlyProfit
         : null;
     if (breakEvenMonths != null && !breakEvenMonths.isFinite) {
       throw ArgumentError('Evaluation results must be finite numbers.');
     }
 
-    final marginScore =
-    ((profitMargin / 20) * 100)
+    final marginScore = ((profitMargin / 20) * 100).clamp(0, 100).toDouble();
+
+    final roiScore = ((roi / 30) * 100).clamp(0, 100).toDouble();
+
+    final demandScore = ((monthlySalesVolume / 150000) * 100)
         .clamp(0, 100)
         .toDouble();
 
-    final roiScore =
-    ((roi / 30) * 100)
-        .clamp(0, 100)
-        .toDouble();
+    final breakEvenScore = _calculateBreakEvenScore(breakEvenMonths);
 
-    final demandScore =
-    ((monthlySalesVolume / 150000) * 100)
-        .clamp(0, 100)
-        .toDouble();
-
-    final breakEvenScore =
-    _calculateBreakEvenScore(breakEvenMonths);
-
-    final profitabilityScore = (
-        marginScore * 0.40 +
-            roiScore * 0.25 +
-            breakEvenScore * 0.20 +
-            demandScore * 0.15
-    ).clamp(0, 100).toDouble();
+    final profitabilityScore =
+        (marginScore * 0.40 +
+                roiScore * 0.25 +
+                breakEvenScore * 0.20 +
+                demandScore * 0.15)
+            .clamp(0, 100)
+            .toDouble();
 
     final roundedScore = _round(profitabilityScore);
     final roundedProfit = _round(monthlyProfit);
@@ -151,15 +136,15 @@ class BusinessEvaluationService {
     if (roundedScore >= 70 && monthlyProfit > 0) {
       category = 'Profitable';
       recommendation =
-      'The proposed fuel station shows strong financial potential.';
+          'The proposed fuel station shows strong financial potential.';
     } else if (roundedScore >= 45 && monthlyProfit > 0) {
       category = 'Moderate Risk';
       recommendation =
-      'The station may be viable, but costs and customer demand should be reviewed.';
+          'The station may be viable, but costs and customer demand should be reviewed.';
     } else {
       category = 'High Risk';
       recommendation =
-      'The current business assumptions indicate high financial risk.';
+          'The current business assumptions indicate high financial risk.';
     }
 
     final explanation = _buildExplanation(
@@ -177,9 +162,7 @@ class BusinessEvaluationService {
       monthlyProfit: roundedProfit,
       profitMargin: roundedMargin,
       roi: roundedRoi,
-      breakEvenMonths: breakEvenMonths == null
-          ? null
-          : _round(breakEvenMonths),
+      breakEvenMonths: breakEvenMonths == null ? null : _round(breakEvenMonths),
       profitabilityScore: roundedScore,
       category: category,
       recommendation: recommendation,
@@ -187,9 +170,7 @@ class BusinessEvaluationService {
     );
   }
 
-  static double _calculateBreakEvenScore(
-      double? breakEvenMonths,
-      ) {
+  static double _calculateBreakEvenScore(double? breakEvenMonths) {
     if (breakEvenMonths == null) return 0;
     if (breakEvenMonths <= 24) return 100;
     if (breakEvenMonths <= 48) return 70;
@@ -206,13 +187,13 @@ class BusinessEvaluationService {
     final breakEvenText = breakEvenMonths == null
         ? 'The station is not currently profitable under the current assumptions.'
         : 'The estimated break-even period is '
-        '${breakEvenMonths.toStringAsFixed(1)} months.';
+              '${breakEvenMonths.toStringAsFixed(1)} months.';
 
     return 'Estimated monthly profit is '
         'RM${monthlyProfit.toStringAsFixed(2)}, '
         'with a profit margin of '
-        '${profitMargin.toStringAsFixed(1)}% and '
-        'an annual ROI of ${roi.toStringAsFixed(1)}%. '
+        '${profitMargin.toStringAsFixed(2)}% and '
+        'an annual ROI of ${roi.toStringAsFixed(2)}%. '
         '$breakEvenText';
   }
 

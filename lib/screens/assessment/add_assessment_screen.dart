@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
@@ -16,6 +17,7 @@ import '../../models/station_assessment_validated_create_input.dart';
 import '../../services/station_assessment_repository.dart';
 import '../../services/station_assessment_service.dart';
 import '../../services/assessment_draft_repository.dart';
+import '../../services/site_factor_intelligence_repository.dart';
 import 'assessment_result_screen.dart';
 import 'east_malaysia_map_screen.dart';
 
@@ -55,6 +57,21 @@ class AddAssessmentScreen extends StatefulWidget {
 }
 
 class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
+  static const _numericMaximums = <String, num>{
+    'Population Density': 100000,
+    'Registered Vehicle Count': 10000000,
+    'Nearby Fuel Stations': 100,
+    'Nearest Competitor Distance': 10,
+  };
+
+  static const _numericRangeHints = <String, String>{
+    'Population Density': 'Allowed: 0–100,000 people/km²',
+    'Registered Vehicle Count': 'Allowed: 0–10,000,000 vehicles',
+    'Nearby Fuel Stations': 'Allowed: 0–100 stations',
+    'Nearest Competitor Distance':
+        'Allowed: 0–10 km (the maximum analysis radius)',
+  };
+
   late final AssessmentCreator assessmentCreator;
   late final AssessmentDraftRepository draftRepository;
 
@@ -77,6 +94,7 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
   bool isSaving = false;
   bool requiresSiteRevalidation = false;
   String? submissionErrorMessage;
+  Map<String, String> fieldErrors = const {};
   EastMalaysiaSiteValidationResult? selectedSiteValidationResult;
   NearbyFuelStationResult? selectedNearbyFuelStationResult;
   SiteFactorIntelligenceResult? selectedSiteFactorIntelligenceResult;
@@ -108,9 +126,17 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
     competitorDistanceController,
   ];
 
-  String? get authenticatedUserId =>
-      widget.authenticatedUserIdProvider?.call() ??
-      Supabase.instance.client.auth.currentUser?.id;
+  String? get authenticatedUserId {
+    final injectedUserId = widget.authenticatedUserIdProvider?.call();
+    if (injectedUserId != null) return injectedUserId;
+
+    try {
+      return Supabase.instance.client.auth.currentUser?.id;
+    } catch (_) {
+      // Widget tests and signed-out startup states have no Supabase instance.
+      return null;
+    }
+  }
 
   Future<void> restoreDraft() async {
     final userId = authenticatedUserId;
@@ -132,12 +158,13 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
         commercialActivity = draft.commercialActivity;
         residentialActivity = draft.residentialActivity;
         landAccessibility = draft.landAccessibility;
-        // A restored local draft represents the user's existing values. A new
-        // map suggestion must not silently replace them after revalidation.
-        roadAccessibilityEdited = true;
-        commercialActivityEdited = true;
-        residentialActivityEdited = true;
-        landAccessibilityEdited = true;
+        // Preserve non-default ratings from a restored draft as manual input.
+        // A default 3 is the initial screen value, so an available site-data
+        // suggestion may still replace it after the user confirms a site.
+        roadAccessibilityEdited = draft.roadAccessibility != 3;
+        commercialActivityEdited = draft.commercialActivity != 3;
+        residentialActivityEdited = draft.residentialActivity != 3;
+        landAccessibilityEdited = draft.landAccessibility != 3;
         isDraftRestored = true;
       });
     } catch (_) {
@@ -222,20 +249,83 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
       competitorDistanceController.text.trim(),
     );
 
-    if (locationName.isEmpty ||
-        populationDensity == null ||
-        registeredVehicleCount == null ||
-        nearbyFuelStations == null ||
-        competitorDistanceKm == null) {
+    final missingOrInvalidFields = <String, String>{};
+    void requireText(String label, String value) {
+      if (value.isEmpty) {
+        missingOrInvalidFields[label] = 'Required — enter a value.';
+      }
+    }
+
+    void requireNumber(String label, String rawValue, num? parsedValue) {
+      if (rawValue.isEmpty) {
+        missingOrInvalidFields[label] = 'Required — enter a value.';
+      } else if (parsedValue == null || !parsedValue.isFinite) {
+        missingOrInvalidFields[label] = 'Enter a valid number.';
+      } else if (parsedValue > _numericMaximums[label]!) {
+        missingOrInvalidFields[label] =
+            'Enter a value within ${_numericRangeHints[label]!.replaceFirst('Allowed: ', '')}.';
+      }
+    }
+
+    requireText('Location Name', locationName);
+    requireNumber(
+      'Population Density',
+      populationController.text.trim(),
+      populationDensity,
+    );
+    requireNumber(
+      'Registered Vehicle Count',
+      vehicleCountController.text.trim(),
+      registeredVehicleCount,
+    );
+    requireNumber(
+      'Nearby Fuel Stations',
+      nearbyStationsController.text.trim(),
+      nearbyFuelStations,
+    );
+    requireNumber(
+      'Nearest Competitor Distance',
+      competitorDistanceController.text.trim(),
+      competitorDistanceKm,
+    );
+
+    if (missingOrInvalidFields.isNotEmpty) {
+      setState(() {
+        fieldErrors = missingOrInvalidFields;
+      });
       showMessage('Please fill in all fields', isError: true);
       return;
     }
 
-    if (populationDensity < 0 ||
-        registeredVehicleCount < 0 ||
-        nearbyFuelStations < 0 ||
-        competitorDistanceKm < 0) {
-      showMessage('Numeric values cannot be negative', isError: true);
+    final validPopulationDensity = populationDensity!;
+    final validRegisteredVehicleCount = registeredVehicleCount!;
+    final validNearbyFuelStations = nearbyFuelStations!;
+    final validCompetitorDistanceKm = competitorDistanceKm!;
+
+    if (validPopulationDensity < 0 ||
+        validRegisteredVehicleCount < 0 ||
+        validNearbyFuelStations < 0 ||
+        validCompetitorDistanceKm < 0) {
+      if (validPopulationDensity < 0) {
+        missingOrInvalidFields['Population Density'] =
+            'Value cannot be negative.';
+      }
+      if (validRegisteredVehicleCount < 0) {
+        missingOrInvalidFields['Registered Vehicle Count'] =
+            'Value cannot be negative.';
+      }
+      if (validNearbyFuelStations < 0) {
+        missingOrInvalidFields['Nearby Fuel Stations'] =
+            'Value cannot be negative.';
+      }
+      if (validCompetitorDistanceKm < 0) {
+        missingOrInvalidFields['Nearest Competitor Distance'] =
+            'Value cannot be negative.';
+      }
+      setState(() {
+        fieldErrors = missingOrInvalidFields;
+      });
+      showMessage('Correct the highlighted values', isError: true);
       return;
     }
 
@@ -250,15 +340,16 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
     setState(() {
       isSaving = true;
       submissionErrorMessage = null;
+      fieldErrors = const {};
     });
 
     try {
       final result = StationAssessmentService.calculate(
-        populationDensity: populationDensity,
+        populationDensity: validPopulationDensity,
         trafficLevel: trafficLevel,
-        registeredVehicleCount: registeredVehicleCount,
-        nearbyFuelStations: nearbyFuelStations,
-        competitorDistanceKm: competitorDistanceKm,
+        registeredVehicleCount: validRegisteredVehicleCount,
+        nearbyFuelStations: validNearbyFuelStations,
+        competitorDistanceKm: validCompetitorDistanceKm,
         roadAccessibility: roadAccessibility,
         commercialActivity: commercialActivity,
         residentialActivity: residentialActivity,
@@ -267,11 +358,11 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
 
       final input = StationAssessmentCreateInput(
         locationName: locationName,
-        populationDensity: populationDensity,
+        populationDensity: validPopulationDensity,
         trafficLevel: trafficLevel,
-        registeredVehicleCount: registeredVehicleCount,
-        nearbyFuelStations: nearbyFuelStations,
-        competitorDistanceKm: competitorDistanceKm,
+        registeredVehicleCount: validRegisteredVehicleCount,
+        nearbyFuelStations: validNearbyFuelStations,
+        competitorDistanceKm: validCompetitorDistanceKm,
         roadAccessibility: roadAccessibility,
         commercialActivity: commercialActivity,
         residentialActivity: residentialActivity,
@@ -417,6 +508,36 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
       submissionErrorMessage = null;
     });
     scheduleDraftSave();
+    if (selection.siteFactorIntelligence == null) {
+      unawaited(_loadSiteDataSuggestions(selection.validationResult));
+    }
+  }
+
+  Future<void> _loadSiteDataSuggestions(
+    EastMalaysiaSiteValidationResult validation,
+  ) async {
+    if (!validation.candidate.isValidatedInside ||
+        selectedSiteValidationResult != validation ||
+        selectedSiteFactorIntelligenceResult != null) {
+      return;
+    }
+
+    try {
+      final intelligence = await SiteFactorIntelligenceRepository(
+        Supabase.instance.client,
+      ).fetchForValidatedSite(validation);
+      if (!mounted || selectedSiteValidationResult != validation) return;
+
+      setState(() {
+        selectedSiteFactorIntelligenceResult = intelligence;
+        _autofillLocation(validation, intelligence);
+        _autofillAvailableSiteFactors(intelligence);
+      });
+      scheduleDraftSave();
+    } catch (_) {
+      // Site data is optional. The assessment remains fully manual when the
+      // bounded Edge Function or a provider is temporarily unavailable.
+    }
   }
 
   void _applyNearbyFuelStationAutofill(NearbyFuelStationResult? result) {
@@ -461,22 +582,30 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
     }
 
     _applyAutomaticScore(
-      intelligence.roadAccessibility.suggestedScore,
+      intelligence.roadAccessibility.hasUsableSuggestion
+          ? intelligence.roadAccessibility.suggestedScore
+          : null,
       alreadyEdited: roadAccessibilityEdited,
       apply: (value) => roadAccessibility = value,
     );
     _applyAutomaticScore(
-      intelligence.commercialActivity.suggestedScore,
+      intelligence.commercialActivity.hasUsableSuggestion
+          ? intelligence.commercialActivity.suggestedScore
+          : null,
       alreadyEdited: commercialActivityEdited,
       apply: (value) => commercialActivity = value,
     );
     _applyAutomaticScore(
-      intelligence.residentialActivity.suggestedScore,
+      intelligence.residentialActivity.hasUsableSuggestion
+          ? intelligence.residentialActivity.suggestedScore
+          : null,
       alreadyEdited: residentialActivityEdited,
       apply: (value) => residentialActivity = value,
     );
     _applyAutomaticScore(
-      intelligence.landAccessibility.suggestedScore,
+      intelligence.landAccessibility.hasUsableSuggestion
+          ? intelligence.landAccessibility.suggestedScore
+          : null,
       alreadyEdited: landAccessibilityEdited,
       apply: (value) => landAccessibility = value,
     );
@@ -494,12 +623,17 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
   Widget buildSiteDataSuggestionsPanel() {
     final intelligence = selectedSiteFactorIntelligenceResult;
     if (intelligence == null) return const SizedBox.shrink();
+    final colors = Theme.of(context).colorScheme;
 
     return Card(
       key: const ValueKey('site-data-suggestions-panel'),
       margin: const EdgeInsets.only(top: 12),
-      color: const Color(0xFFE7F3EC),
+      color: colors.primaryContainer,
       child: ExpansionTile(
+        textColor: colors.onPrimaryContainer,
+        collapsedTextColor: colors.onPrimaryContainer,
+        iconColor: colors.onPrimaryContainer,
+        collapsedIconColor: colors.onPrimaryContainer,
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -524,7 +658,7 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
           ],
         ),
         subtitle: const Text(
-          'Available suggestions fill empty fields; vehicle reference never does.',
+          'Available scores update untouched ratings automatically.',
         ),
         childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
         children: [
@@ -540,9 +674,12 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'Sources',
-                    style: TextStyle(fontSize: 12, color: Colors.black54),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: colors.onPrimaryContainer,
+                    ),
                   ),
                   Wrap(
                     spacing: 8,
@@ -806,12 +943,15 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
         children: [
           if (isDraftRestored) ...[
             Card(
-              color: const Color(0xFFE7F3EC),
+              color: Theme.of(context).colorScheme.primaryContainer,
               child: Padding(
                 padding: const EdgeInsets.all(12),
                 child: Row(
                   children: [
-                    const Icon(Icons.save_outlined, color: Color(0xFF168C4B)),
+                    Icon(
+                      Icons.save_outlined,
+                      color: Theme.of(context).colorScheme.onPrimaryContainer,
+                    ),
                     const SizedBox(width: 8),
                     const Expanded(
                       child: Text(
@@ -839,8 +979,8 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
               true) ...[
             const SizedBox(height: 12),
             DecoratedBox(
-              decoration: const BoxDecoration(
-                color: Color(0xFFE7F3EC),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primaryContainer,
                 borderRadius: BorderRadius.all(Radius.circular(12)),
               ),
               child: Padding(
@@ -862,9 +1002,27 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
             ),
           ],
           const SizedBox(height: 20),
-          const Text(
-            'Location and Demand',
-            style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Location and Demand',
+                style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
+              ),
+              compactInformationButton(
+                key: const ValueKey('location-demand-information-button'),
+                tooltip: 'About location and demand',
+                onPressed: () => _showInformationDialog(
+                  title: 'Location and Demand',
+                  message:
+                      'Population Density may use an estimated Site Data value.\n\n'
+                      'Registered Vehicle Count is always a manual local estimate. '
+                      'No verified dataset provides the number of registered vehicles '
+                      'inside the selected radius. Any JPJ/data.gov.my reference in '
+                      'Site Data is regional registration-office/channel data only.',
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 16),
           inputField(
@@ -886,16 +1044,30 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
             hint: 'Enter your local estimate',
             icon: Icons.directions_car_outlined,
             isNumber: true,
-            informationMessage:
-                'Registered Vehicle Count is a manual local '
-                'estimate. No verified dataset provides the number of vehicles '
-                'within the selected radius. Any JPJ/data.gov.my reference shown '
-                'in Site Data is regional registration-office/channel data only.',
           ),
           const SizedBox(height: 8),
-          const Text(
-            'Competition',
-            style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Competition',
+                style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
+              ),
+              compactInformationButton(
+                key: const ValueKey('competition-information-button'),
+                tooltip: 'About competition data',
+                onPressed: () => _showInformationDialog(
+                  title: 'Competition',
+                  message:
+                      'Nearby Fuel Stations and Nearest Competitor Distance use '
+                      'OpenStreetMap data when it is available.\n\n'
+                      'Nearest Competitor Distance is the nearest returned fuel '
+                      'station within the selected radius. If none is returned, it '
+                      'is not set to 0 km; enter a verified manual estimate before '
+                      'calculating the score.',
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 16),
           inputField(
@@ -913,13 +1085,16 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
             isDecimal: true,
           ),
           if (requiresManualCompetitorDistance)
-            const Padding(
+            Padding(
               padding: EdgeInsets.only(bottom: 16),
               child: Text(
                 'No nearest competitor distance was returned inside the '
                 'selected radius. It was not set to 0 km; enter a verified '
                 'manual estimate before calculating the score.',
-                style: TextStyle(fontSize: 12, color: Colors.black54),
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
             ),
           const SizedBox(height: 8),
@@ -936,11 +1111,13 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
                 onPressed: () => _showInformationDialog(
                   title: 'Area Ratings',
                   message:
-                      'Rate each factor from 1 (Very Low) to 5 (Very High). '
-                      'Available road, commercial, residential and land suggestions '
-                      'can fill an empty rating after site data loads, but you can '
-                      'change every rating. Traffic level always requires your own '
-                      'observation or a separate traffic-data provider.',
+                      'Rate each factor from 1 (Very Low) to 5 (Very High).\n\n'
+                      'Traffic Level is manual: use your own observation or a '
+                      'separate traffic-data provider. It is never inferred from '
+                      'roads or OpenStreetMap data.\n\n'
+                      'Road, commercial, residential and land suggestions can fill '
+                      'an untouched default rating after Site Data loads. You can '
+                      'change every rating.',
                 ),
               ),
             ],
@@ -956,10 +1133,6 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
               });
               scheduleDraftSave();
             },
-            informationMessage:
-                'Traffic level requires observation or a '
-                'separate traffic-data provider. It is never inferred from '
-                'road or OpenStreetMap data.',
           ),
           ratingField(
             label: 'Road Accessibility',
@@ -1048,10 +1221,28 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
     bool isDecimal = false,
     String? informationMessage,
   }) {
+    final errorText = fieldErrors[label];
+    final maximum = _numericMaximums[label];
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: TextField(
         controller: controller,
+        onChanged: (_) {
+          if (!fieldErrors.containsKey(label)) return;
+          setState(() {
+            fieldErrors = Map.of(fieldErrors)..remove(label);
+          });
+        },
+        inputFormatters: maximum == null
+            ? null
+            : [
+                TextInputFormatter.withFunction((oldValue, newValue) {
+                  final entered = double.tryParse(newValue.text);
+                  return entered == null || entered <= maximum
+                      ? newValue
+                      : oldValue;
+                }),
+              ],
         keyboardType: isDecimal
             ? const TextInputType.numberWithOptions(decimal: true)
             : isNumber
@@ -1060,6 +1251,7 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
         decoration: InputDecoration(
           labelText: label,
           hintText: hint,
+          errorText: errorText,
           prefixIcon: Icon(icon),
           suffixIcon: informationMessage == null
               ? null
@@ -1080,26 +1272,13 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
     required IconData icon,
     required int value,
     required ValueChanged<int> onChanged,
-    String? informationMessage,
   }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: DropdownButtonFormField<int>(
         key: ValueKey('$label-$value'),
         initialValue: value,
-        decoration: InputDecoration(
-          labelText: label,
-          prefixIcon: Icon(icon),
-          suffixIcon: informationMessage == null
-              ? null
-              : compactInformationButton(
-                  tooltip: 'More information',
-                  onPressed: () => _showInformationDialog(
-                    title: label,
-                    message: informationMessage,
-                  ),
-                ),
-        ),
+        decoration: InputDecoration(labelText: label, prefixIcon: Icon(icon)),
         items: List.generate(5, (index) {
           final rating = index + 1;
 

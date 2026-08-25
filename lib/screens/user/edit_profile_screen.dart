@@ -116,6 +116,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             TextField(
               controller: fullNameController,
               textInputAction: TextInputAction.next,
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
               decoration: const InputDecoration(
                 labelText: 'Full Name',
                 prefixIcon: Icon(Icons.person_outline),
@@ -125,6 +126,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             TextField(
               controller: phoneController,
               keyboardType: TextInputType.phone,
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
               decoration: const InputDecoration(
                 labelText: 'Phone Number',
                 prefixIcon: Icon(Icons.phone_outlined),
