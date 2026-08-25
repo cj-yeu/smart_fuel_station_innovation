@@ -23,12 +23,10 @@ class AddEvaluationScreen extends StatefulWidget {
   });
 
   @override
-  State<AddEvaluationScreen> createState() =>
-      _AddEvaluationScreenState();
+  State<AddEvaluationScreen> createState() => _AddEvaluationScreenState();
 }
 
-class _AddEvaluationScreenState
-    extends State<AddEvaluationScreen> {
+class _AddEvaluationScreenState extends State<AddEvaluationScreen> {
   final stationNameController = TextEditingController();
   final fuelPriceController = TextEditingController();
   final fuelCostController = TextEditingController();
@@ -62,7 +60,8 @@ class _AddEvaluationScreenState
           Supabase.instance.client,
         ).fetchCompanyAssessments;
     officialFuelPriceLoader =
-        widget.officialFuelPriceLoader ?? OfficialFuelPriceRepository().loadLatest;
+        widget.officialFuelPriceLoader ??
+        OfficialFuelPriceRepository().loadLatest;
     loadAssessments();
     loadOfficialFuelPrice();
   }
@@ -106,7 +105,7 @@ class _AddEvaluationScreenState
 
   /// Loads only the RLS-visible assessments. Company ownership is resolved by
   /// PostgreSQL; this form intentionally supplies no client-side ownership
-  /// filter and selection is context/prefill, not a persisted relationship.
+  /// filter and selection is context only, not a persisted relationship.
   Future<void> loadAssessments() async {
     try {
       final loadedAssessments = await assessmentLoader();
@@ -132,9 +131,7 @@ class _AddEvaluationScreenState
 
     final fuelPrice = parseDouble(fuelPriceController);
     final fuelCost = parseDouble(fuelCostController);
-    final dailyCustomers = int.tryParse(
-      dailyCustomersController.text.trim(),
-    );
+    final dailyCustomers = int.tryParse(dailyCustomersController.text.trim());
     final averageLitres = parseDouble(averageLitresController);
     final rental = parseDouble(rentalController);
     final salary = parseDouble(salaryController);
@@ -173,15 +170,21 @@ class _AddEvaluationScreenState
         maintenance < 0 ||
         otherCost < 0 ||
         investment < 0) {
-      showMessage(
-        'Values cannot be negative',
-        isError: true,
-      );
+      showMessage('Values cannot be negative', isError: true);
       return;
     }
 
-    if (![fuelPrice, fuelCost, averageLitres, rental, salary, utilities,
-          maintenance, otherCost, investment].every((value) => value.isFinite)) {
+    if (![
+      fuelPrice,
+      fuelCost,
+      averageLitres,
+      rental,
+      salary,
+      utilities,
+      maintenance,
+      otherCost,
+      investment,
+    ].every((value) => value.isFinite)) {
       showMessage('Values must be finite numbers', isError: true);
       return;
     }
@@ -212,9 +215,7 @@ class _AddEvaluationScreenState
         initialInvestment: investment,
       );
 
-      await Supabase.instance.client
-          .from('business_evaluations')
-          .insert({
+      await Supabase.instance.client.from('business_evaluations').insert({
         'user_id': user.id,
         'station_name': stationName,
         'fuel_price': fuelPrice,
@@ -230,8 +231,7 @@ class _AddEvaluationScreenState
         'monthly_sales_volume': result.monthlySalesVolume,
         'monthly_revenue': result.monthlyRevenue,
         'monthly_fuel_cost': result.monthlyFuelCost,
-        'monthly_operating_cost':
-        result.monthlyOperatingCost,
+        'monthly_operating_cost': result.monthlyOperatingCost,
         'monthly_profit': result.monthlyProfit,
         'profit_margin': result.profitMargin,
         'roi': result.roi,
@@ -247,10 +247,8 @@ class _AddEvaluationScreenState
       final completed = await Navigator.push<bool>(
         context,
         MaterialPageRoute(
-          builder: (context) => EvaluationResultScreen(
-            stationName: stationName,
-            result: result,
-          ),
+          builder: (context) =>
+              EvaluationResultScreen(stationName: stationName, result: result),
         ),
       );
 
@@ -261,7 +259,10 @@ class _AddEvaluationScreenState
       }
     } on PostgrestException {
       if (!mounted) return;
-      showMessage('Unable to save the evaluation. Please try again.', isError: true);
+      showMessage(
+        'Unable to save the evaluation. Please try again.',
+        isError: true,
+      );
     } catch (_) {
       if (!mounted) return;
       showMessage(
@@ -309,7 +310,7 @@ class _AddEvaluationScreenState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F7F6),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text('New Profitability Evaluation'),
         backgroundColor: const Color(0xFF168C4B),
@@ -411,13 +412,13 @@ class _AddEvaluationScreenState
             ),
             icon: isSaving
                 ? const SizedBox(
-              width: 22,
-              height: 22,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: Colors.white,
-              ),
-            )
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
                 : const Icon(Icons.calculate),
             label: Text(
               isSaving ? 'Calculating...' : 'Calculate Profitability',
@@ -461,12 +462,34 @@ class _AddEvaluationScreenState
         DropdownButtonFormField<String>(
           value: selectedAssessment?.id ?? '',
           isExpanded: true,
-          itemHeight: 72,
+          // The selected form-field value has less vertical space than a menu
+          // entry. Keep it to one line; the menu itself can show two lines.
+          itemHeight: null,
           decoration: const InputDecoration(
             labelText: 'Assessment Site',
-            helperText: 'Optional prefill/context; not a saved relationship.',
+            helperText: 'Optional context only. Enter Station Name manually.',
             prefixIcon: Icon(Icons.location_searching_outlined),
           ),
+          selectedItemBuilder: (context) => [
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Manual / No assessment',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            for (final assessment in assessments)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  assessment.locationName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+          ],
           items: [
             const DropdownMenuItem(
               value: '',
@@ -475,21 +498,26 @@ class _AddEvaluationScreenState
             for (final assessment in assessments)
               DropdownMenuItem(
                 value: assessment.id,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      assessment.locationName,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                    Text(
-                      assessmentOptionLabel(assessment),
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                  ],
+                child: SizedBox(
+                  height: 56,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        assessment.locationName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      Text(
+                        assessmentOptionLabel(assessment),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                    ],
+                  ),
                 ),
               ),
           ],
@@ -499,13 +527,11 @@ class _AddEvaluationScreenState
                 : assessments.firstWhere((item) => item.id == assessmentId);
             setState(() {
               selectedAssessment = selected;
-              if (selected != null) {
-                stationNameController.text = selected.locationName;
-              }
             });
           },
         ),
-        if (selectedAssessment != null) assessmentContextCard(selectedAssessment!),
+        if (selectedAssessment != null)
+          assessmentContextCard(selectedAssessment!),
         const SizedBox(height: 8),
       ],
     );
@@ -580,7 +606,9 @@ class _AddEvaluationScreenState
                     'Official weekly retail price: RM '
                     '${_selectedOfficialPrice.toStringAsFixed(2)} / litre',
                   ),
-                  Text('Effective: ${_formatEffectiveDate(price.effectiveDate)}'),
+                  Text(
+                    'Effective: ${_formatEffectiveDate(price.effectiveDate)}',
+                  ),
                   TextButton(
                     onPressed: _openOfficialSource,
                     child: const Text(
@@ -588,7 +616,9 @@ class _AddEvaluationScreenState
                     ),
                   ),
                   const Text('Weekly official retail price data.'),
-                  const Text('Manual override is allowed for scenario analysis.'),
+                  const Text(
+                    'Manual override is allowed for scenario analysis.',
+                  ),
                   const SizedBox(height: 4),
                   OutlinedButton(
                     onPressed: useOfficialPrice,
@@ -661,7 +691,9 @@ class _AddEvaluationScreenState
               style: TextStyle(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 6),
-            Text('${assessment.suitabilityCategory} · ${assessment.finalScore.toStringAsFixed(1)}/100'),
+            Text(
+              '${assessment.suitabilityCategory} · ${assessment.finalScore.toStringAsFixed(1)}/100',
+            ),
             Text('Territory: $territory'),
             Text(
               isValidated
@@ -674,7 +706,7 @@ class _AddEvaluationScreenState
             ),
             const SizedBox(height: 4),
             const Text(
-              'This is prefill/context only and is not a permanent database relationship.',
+              'This is context only and is not a permanent database relationship.',
               style: TextStyle(fontSize: 12, color: Colors.black54),
             ),
           ],
@@ -685,16 +717,10 @@ class _AddEvaluationScreenState
 
   Widget sectionTitle(String title) {
     return Padding(
-      padding: const EdgeInsets.only(
-        top: 8,
-        bottom: 16,
-      ),
+      padding: const EdgeInsets.only(top: 8, bottom: 16),
       child: Text(
         title,
-        style: const TextStyle(
-          fontSize: 19,
-          fontWeight: FontWeight.bold,
-        ),
+        style: const TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
       ),
     );
   }
@@ -712,9 +738,7 @@ class _AddEvaluationScreenState
       child: TextField(
         controller: controller,
         keyboardType: decimal
-            ? const TextInputType.numberWithOptions(
-          decimal: true,
-        )
+            ? const TextInputType.numberWithOptions(decimal: true)
             : number
             ? TextInputType.number
             : TextInputType.text,

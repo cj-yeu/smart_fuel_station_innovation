@@ -1,9 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../models/east_malaysia_site_validation_result.dart';
 import '../../models/east_malaysia_map_selection.dart';
+import '../../models/assessment_draft.dart';
 import '../../models/nearby_fuel_station_result.dart';
 import '../../models/site_factor_intelligence_result.dart';
 import '../../models/station_assessment.dart';
@@ -11,6 +15,7 @@ import '../../models/station_assessment_create_input.dart';
 import '../../models/station_assessment_validated_create_input.dart';
 import '../../services/station_assessment_repository.dart';
 import '../../services/station_assessment_service.dart';
+import '../../services/assessment_draft_repository.dart';
 import 'assessment_result_screen.dart';
 import 'east_malaysia_map_screen.dart';
 
@@ -32,6 +37,8 @@ class AddAssessmentScreen extends StatefulWidget {
   final ValidatedAssessmentCreator? validatedAssessmentCreator;
   final AssessmentMapScreenBuilder? mapScreenBuilder;
   final AssessmentRequestIdGenerator? requestIdGenerator;
+  final AssessmentDraftRepository? draftRepository;
+  final String? Function()? authenticatedUserIdProvider;
 
   const AddAssessmentScreen({
     super.key,
@@ -39,6 +46,8 @@ class AddAssessmentScreen extends StatefulWidget {
     this.validatedAssessmentCreator,
     this.mapScreenBuilder,
     this.requestIdGenerator,
+    this.draftRepository,
+    this.authenticatedUserIdProvider,
   });
 
   @override
@@ -47,6 +56,7 @@ class AddAssessmentScreen extends StatefulWidget {
 
 class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
   late final AssessmentCreator assessmentCreator;
+  late final AssessmentDraftRepository draftRepository;
 
   final locationController = TextEditingController();
   final populationController = TextEditingController();
@@ -72,6 +82,10 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
   SiteFactorIntelligenceResult? selectedSiteFactorIntelligenceResult;
   String? validatedRequestId;
   String? validatedPayloadFingerprint;
+  Timer? draftSaveTimer;
+  Future<void> draftWriteChain = Future.value();
+  bool isRestoringDraft = false;
+  bool isDraftRestored = false;
 
   @override
   void initState() {
@@ -79,6 +93,118 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
     assessmentCreator =
         widget.assessmentCreator ??
         StationAssessmentRepository(Supabase.instance.client).createAssessment;
+    draftRepository = widget.draftRepository ?? AssessmentDraftRepository();
+    for (final controller in draftControllers) {
+      controller.addListener(scheduleDraftSave);
+    }
+    unawaited(restoreDraft());
+  }
+
+  List<TextEditingController> get draftControllers => [
+    locationController,
+    populationController,
+    vehicleCountController,
+    nearbyStationsController,
+    competitorDistanceController,
+  ];
+
+  String? get authenticatedUserId =>
+      widget.authenticatedUserIdProvider?.call() ??
+      Supabase.instance.client.auth.currentUser?.id;
+
+  Future<void> restoreDraft() async {
+    final userId = authenticatedUserId;
+    if (userId == null) return;
+
+    try {
+      final draft = await draftRepository.loadDraft(userId);
+      if (!mounted || draft == null || !draft.hasContent) return;
+
+      isRestoringDraft = true;
+      setState(() {
+        locationController.text = draft.locationName;
+        populationController.text = draft.populationDensity;
+        vehicleCountController.text = draft.registeredVehicleCount;
+        nearbyStationsController.text = draft.nearbyFuelStations;
+        competitorDistanceController.text = draft.competitorDistanceKm;
+        trafficLevel = draft.trafficLevel;
+        roadAccessibility = draft.roadAccessibility;
+        commercialActivity = draft.commercialActivity;
+        residentialActivity = draft.residentialActivity;
+        landAccessibility = draft.landAccessibility;
+        // A restored local draft represents the user's existing values. A new
+        // map suggestion must not silently replace them after revalidation.
+        roadAccessibilityEdited = true;
+        commercialActivityEdited = true;
+        residentialActivityEdited = true;
+        landAccessibilityEdited = true;
+        isDraftRestored = true;
+      });
+    } catch (_) {
+      // A local draft must never block the normal Supabase-backed workflow.
+    } finally {
+      isRestoringDraft = false;
+    }
+  }
+
+  void scheduleDraftSave() {
+    if (isRestoringDraft) return;
+    draftSaveTimer?.cancel();
+    draftSaveTimer = Timer(const Duration(milliseconds: 450), queueDraftSave);
+  }
+
+  void queueDraftSave() {
+    final userId = authenticatedUserId;
+    if (userId == null || isRestoringDraft) return;
+    final draft = currentDraft;
+    draftWriteChain = continueAfterDraftWrite().then((_) async {
+      if (draft.hasContent) {
+        await draftRepository.saveDraft(userId, draft);
+      } else {
+        await draftRepository.deleteDraft(userId);
+      }
+    });
+  }
+
+  AssessmentDraft get currentDraft => AssessmentDraft(
+    locationName: locationController.text,
+    populationDensity: populationController.text,
+    registeredVehicleCount: vehicleCountController.text,
+    nearbyFuelStations: nearbyStationsController.text,
+    competitorDistanceKm: competitorDistanceController.text,
+    trafficLevel: trafficLevel,
+    roadAccessibility: roadAccessibility,
+    commercialActivity: commercialActivity,
+    residentialActivity: residentialActivity,
+    landAccessibility: landAccessibility,
+    updatedAt: DateTime.now(),
+  );
+
+  Future<void> continueAfterDraftWrite() async {
+    try {
+      await draftWriteChain;
+    } catch (_) {
+      // A failed local write must not prevent a later write or Supabase save.
+    }
+  }
+
+  Future<void> clearDraft() async {
+    draftSaveTimer?.cancel();
+    final userId = authenticatedUserId;
+    if (userId == null) return;
+    draftWriteChain = continueAfterDraftWrite().then(
+      (_) => draftRepository.deleteDraft(userId),
+    );
+    try {
+      await draftWriteChain;
+    } catch (_) {
+      return;
+    }
+    if (mounted) {
+      setState(() {
+        isDraftRestored = false;
+      });
+    }
   }
 
   Future<void> runAssessment() async {
@@ -184,6 +310,8 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
         await assessmentCreator(input);
       }
 
+      await clearDraft();
+
       if (!mounted) return;
 
       final completed = await Navigator.push<bool>(
@@ -288,6 +416,7 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
       requiresSiteRevalidation = false;
       submissionErrorMessage = null;
     });
+    scheduleDraftSave();
   }
 
   void _applyNearbyFuelStationAutofill(NearbyFuelStationResult? result) {
@@ -295,11 +424,16 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
     if (nearbyStationsController.text.trim().isEmpty) {
       nearbyStationsController.text = result.stationCount.toString();
     }
-    if (competitorDistanceController.text.trim().isEmpty) {
-      competitorDistanceController.text = (result.nearestDistanceKm ?? 0)
-          .toStringAsFixed(2);
+    final nearestDistance = result.nearestDistanceKm;
+    if (nearestDistance != null &&
+        competitorDistanceController.text.trim().isEmpty) {
+      competitorDistanceController.text = nearestDistance.toStringAsFixed(2);
     }
   }
+
+  bool get requiresManualCompetitorDistance =>
+      selectedNearbyFuelStationResult != null &&
+      selectedNearbyFuelStationResult!.nearestDistanceKm == null;
 
   void _autofillLocation(
     EastMalaysiaSiteValidationResult validation,
@@ -324,12 +458,6 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
     if (population.hasUsableSuggestion &&
         populationController.text.trim().isEmpty) {
       populationController.text = population.densityPerSqKm!.toStringAsFixed(2);
-    }
-
-    final vehicleDemand = intelligence.vehicleDemand;
-    if (vehicleDemand.hasUsableSuggestion &&
-        vehicleCountController.text.trim().isEmpty) {
-      vehicleCountController.text = vehicleDemand.value.toString();
     }
 
     _applyAutomaticScore(
@@ -370,38 +498,131 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
     return Card(
       key: const ValueKey('site-data-suggestions-panel'),
       margin: const EdgeInsets.only(top: 12),
-      color: const Color(0xFFE8F1FC),
+      color: const Color(0xFFE7F3EC),
       child: ExpansionTile(
-        title: const Text('Site Data'),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Site Data'),
+            compactInformationButton(
+              key: const ValueKey('site-data-information-button'),
+              tooltip: 'How site data is used',
+              onPressed: () => _showInformationDialog(
+                title: 'About Site Data',
+                message:
+                    'Population is an estimated density. Road, commercial, '
+                    'residential and land scores are OpenStreetMap-based suggestions '
+                    'that depend on mapping completeness. They do not measure traffic. '
+                    'Land accessibility is only a proximity and access-tag proxy; it '
+                    'does not establish ownership, legal access, planning permission '
+                    'or site availability.\n\nA JPJ/data.gov.my vehicle reference, '
+                    'when shown, is regional registration-office/channel data. It is '
+                    'not a vehicle count within this selected radius and never fills '
+                    'the Registered Vehicle Count field.',
+              ),
+            ),
+          ],
+        ),
         subtitle: const Text(
-          'Available suggested values were filled into empty fields.',
+          'Available suggestions fill empty fields; vehicle reference never does.',
         ),
         childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
         children: [
           buildPopulationSuggestion(intelligence.population),
-          buildVehicleDemandSuggestion(intelligence.vehicleDemand),
           buildRoadSuggestion(intelligence.roadAccessibility),
           buildCommercialSuggestion(intelligence.commercialActivity),
           buildResidentialSuggestion(intelligence.residentialActivity),
           buildLandSuggestion(intelligence.landAccessibility),
-          const Padding(
-            padding: EdgeInsets.only(top: 8),
-            child: Text(
-              'OSM-based scores are mapping-completeness proxies. Review them '
-              'before use; they do not measure traffic or legal land access.',
-              style: TextStyle(fontSize: 12, color: Colors.black54),
-            ),
-          ),
+          buildVehicleRegistrationReference(intelligence.vehicleDemand),
           if (intelligence.attribution.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 8),
-              child: Text(
-                'Attribution: ${intelligence.attribution.map((item) => '${item.source} (${item.licence})').join(' • ')}',
-                style: const TextStyle(fontSize: 12, color: Colors.black54),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Sources',
+                    style: TextStyle(fontSize: 12, color: Colors.black54),
+                  ),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 2,
+                    children: intelligence.attribution
+                        .map(
+                          (item) => TextButton.icon(
+                            key: ValueKey('site-data-source-${item.source}'),
+                            onPressed: () => _openAttributionUrl(item.url),
+                            style: TextButton.styleFrom(
+                              padding: EdgeInsets.zero,
+                              minimumSize: Size.zero,
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                            icon: const Icon(Icons.open_in_new, size: 14),
+                            label: Text(
+                              '${item.source} (${item.licence})',
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                          ),
+                        )
+                        .toList(growable: false),
+                  ),
+                ],
               ),
             ),
         ],
       ),
+    );
+  }
+
+  Future<void> _openAttributionUrl(String value) async {
+    final url = Uri.tryParse(value);
+    if (url == null || (url.scheme != 'https' && url.scheme != 'http')) {
+      return;
+    }
+
+    try {
+      await launchUrl(url, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      // Attribution remains visible if the device has no browser handler.
+    }
+  }
+
+  void _showInformationDialog({
+    required String title,
+    required String message,
+  }) {
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: SingleChildScrollView(child: Text(message)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget buildVehicleRegistrationReference(VehicleDemandProxy evidence) {
+    if (!evidence.available || !evidence.isProxy || evidence.value == null) {
+      return const SizedBox.shrink();
+    }
+
+    return buildSuggestionSection(
+      title: 'Regional vehicle-registration proxy (reference only)',
+      evidence: [
+        'Reported records: ${evidence.value}',
+        if (evidence.geographicScope != null)
+          'Geographic scope: ${evidence.geographicScope}',
+        if (evidence.dataPeriod != null) 'Period: ${evidence.dataPeriod}',
+        if (evidence.source != null) 'Source: ${evidence.source}',
+        'Not vehicles within this selected radius. This never fills the manual field.',
+      ],
+      buttonLabel: null,
+      onApply: null,
     );
   }
 
@@ -416,27 +637,6 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
         if (evidence.dataYear != null) 'Data year: ${evidence.dataYear}',
         if (evidence.source != null) 'Source: ${evidence.source}',
         'Confidence: ${confidenceLabel(evidence.confidence)}',
-      ],
-      buttonLabel: null,
-      onApply: null,
-    );
-  }
-
-  Widget buildVehicleDemandSuggestion(VehicleDemandProxy evidence) {
-    if (!evidence.available || !evidence.hasUsableSuggestion) {
-      return const SizedBox.shrink();
-    }
-    return buildSuggestionSection(
-      title: evidence.isProxy
-          ? 'Regional vehicle-registration proxy'
-          : 'Vehicle demand',
-      evidence: [
-        'Value: ${evidence.value}',
-        if (evidence.geographicScope != null)
-          'Geographic scope: ${evidence.geographicScope}',
-        if (evidence.dataPeriod != null) 'Period: ${evidence.dataPeriod}',
-        if (evidence.source != null) 'Source: ${evidence.source}',
-        'This is not a vehicle count within the selected radius.',
       ],
       buttonLabel: null,
       onApply: null,
@@ -580,6 +780,10 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
 
   @override
   void dispose() {
+    draftSaveTimer?.cancel();
+    for (final controller in draftControllers) {
+      controller.removeListener(scheduleDraftSave);
+    }
     locationController.dispose();
     populationController.dispose();
     vehicleCountController.dispose();
@@ -591,7 +795,7 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F7F6),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text('New Assessment'),
         backgroundColor: const Color(0xFF168C4B),
@@ -600,6 +804,31 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
       body: ListView(
         padding: const EdgeInsets.all(24),
         children: [
+          if (isDraftRestored) ...[
+            Card(
+              color: const Color(0xFFE7F3EC),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  children: [
+                    const Icon(Icons.save_outlined, color: Color(0xFF168C4B)),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Text(
+                        'A local draft was restored. Revalidate any site before saving.',
+                        style: TextStyle(fontSize: 12),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: clearDraft,
+                      child: const Text('Discard'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
           OutlinedButton.icon(
             key: const ValueKey('view-east-malaysia-map-button'),
             onPressed: selectSiteOnMap,
@@ -654,18 +883,14 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
           inputField(
             controller: vehicleCountController,
             label: 'Registered Vehicle Count',
-            hint: 'Enter your local vehicle-demand estimate',
+            hint: 'Enter your local estimate',
             icon: Icons.directions_car_outlined,
             isNumber: true,
-          ),
-          const Padding(
-            padding: EdgeInsets.only(bottom: 16),
-            child: Text(
-              'When available, the auto-filled number is a regional JPJ '
-              'registration-channel proxy—not vehicles near this site. You can '
-              'edit it manually.',
-              style: TextStyle(fontSize: 12, color: Colors.black54),
-            ),
+            informationMessage:
+                'Registered Vehicle Count is a manual local '
+                'estimate. No verified dataset provides the number of vehicles '
+                'within the selected radius. Any JPJ/data.gov.my reference shown '
+                'in Site Data is regional registration-office/channel data only.',
           ),
           const SizedBox(height: 8),
           const Text(
@@ -687,15 +912,38 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
             icon: Icons.route_outlined,
             isDecimal: true,
           ),
+          if (requiresManualCompetitorDistance)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 16),
+              child: Text(
+                'No nearest competitor distance was returned inside the '
+                'selected radius. It was not set to 0 km; enter a verified '
+                'manual estimate before calculating the score.',
+                style: TextStyle(fontSize: 12, color: Colors.black54),
+              ),
+            ),
           const SizedBox(height: 8),
-          const Text(
-            'Area Ratings',
-            style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 6),
-          const Text(
-            'Rate each factor from 1 (Very Low) to 5 (Very High).',
-            style: TextStyle(color: Colors.black54),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Area Ratings',
+                style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
+              ),
+              compactInformationButton(
+                key: const ValueKey('area-ratings-information-button'),
+                tooltip: 'How ratings are used',
+                onPressed: () => _showInformationDialog(
+                  title: 'Area Ratings',
+                  message:
+                      'Rate each factor from 1 (Very Low) to 5 (Very High). '
+                      'Available road, commercial, residential and land suggestions '
+                      'can fill an empty rating after site data loads, but you can '
+                      'change every rating. Traffic level always requires your own '
+                      'observation or a separate traffic-data provider.',
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 16),
           ratingField(
@@ -706,14 +954,12 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
               setState(() {
                 trafficLevel = value;
               });
+              scheduleDraftSave();
             },
-          ),
-          const Padding(
-            padding: EdgeInsets.only(bottom: 16),
-            child: Text(
-              'Traffic level requires observation or a separate traffic-data provider.',
-              style: TextStyle(fontSize: 12, color: Colors.black54),
-            ),
+            informationMessage:
+                'Traffic level requires observation or a '
+                'separate traffic-data provider. It is never inferred from '
+                'road or OpenStreetMap data.',
           ),
           ratingField(
             label: 'Road Accessibility',
@@ -724,6 +970,7 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
                 roadAccessibility = value;
                 roadAccessibilityEdited = true;
               });
+              scheduleDraftSave();
             },
           ),
           ratingField(
@@ -735,6 +982,7 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
                 commercialActivity = value;
                 commercialActivityEdited = true;
               });
+              scheduleDraftSave();
             },
           ),
           ratingField(
@@ -746,6 +994,7 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
                 residentialActivity = value;
                 residentialActivityEdited = true;
               });
+              scheduleDraftSave();
             },
           ),
           ratingField(
@@ -757,6 +1006,7 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
                 landAccessibility = value;
                 landAccessibilityEdited = true;
               });
+              scheduleDraftSave();
             },
           ),
           const SizedBox(height: 12),
@@ -796,6 +1046,7 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
     required IconData icon,
     bool isNumber = false,
     bool isDecimal = false,
+    String? informationMessage,
   }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
@@ -810,6 +1061,15 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
           labelText: label,
           hintText: hint,
           prefixIcon: Icon(icon),
+          suffixIcon: informationMessage == null
+              ? null
+              : compactInformationButton(
+                  tooltip: 'More information',
+                  onPressed: () => _showInformationDialog(
+                    title: label,
+                    message: informationMessage,
+                  ),
+                ),
         ),
       ),
     );
@@ -820,13 +1080,26 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
     required IconData icon,
     required int value,
     required ValueChanged<int> onChanged,
+    String? informationMessage,
   }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: DropdownButtonFormField<int>(
         key: ValueKey('$label-$value'),
         initialValue: value,
-        decoration: InputDecoration(labelText: label, prefixIcon: Icon(icon)),
+        decoration: InputDecoration(
+          labelText: label,
+          prefixIcon: Icon(icon),
+          suffixIcon: informationMessage == null
+              ? null
+              : compactInformationButton(
+                  tooltip: 'More information',
+                  onPressed: () => _showInformationDialog(
+                    title: label,
+                    message: informationMessage,
+                  ),
+                ),
+        ),
         items: List.generate(5, (index) {
           final rating = index + 1;
 
@@ -843,6 +1116,23 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
                 }
               },
       ),
+    );
+  }
+
+  Widget compactInformationButton({
+    Key? key,
+    required String tooltip,
+    required VoidCallback onPressed,
+  }) {
+    return IconButton(
+      key: key,
+      tooltip: tooltip,
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+      visualDensity: VisualDensity.compact,
+      iconSize: 18,
+      icon: const Icon(Icons.info_outline),
+      onPressed: onPressed,
     );
   }
 

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../models/user_profile.dart';
+import '../../services/app_theme_controller.dart';
 import '../assessment/assessment_list_screen.dart';
 import '../evaluation/evaluation_list_screen.dart';
 import '../user/profile_screen.dart';
@@ -92,12 +93,25 @@ class _HomeScreenState extends State<HomeScreen> {
     final role = displayRole(widget.profile.role);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F7F6),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text('Smart Fuel Dashboard'),
         backgroundColor: Colors.green,
         foregroundColor: Colors.white,
         actions: [
+          PopupMenuButton<ThemeMode>(
+            tooltip: 'Appearance',
+            icon: const Icon(Icons.brightness_6_outlined),
+            onSelected: AppThemeScope.of(context).setThemeMode,
+            itemBuilder: (context) => const [
+              PopupMenuItem(
+                value: ThemeMode.system,
+                child: Text('Use device setting'),
+              ),
+              PopupMenuItem(value: ThemeMode.light, child: Text('Light mode')),
+              PopupMenuItem(value: ThemeMode.dark, child: Text('Dark mode')),
+            ],
+          ),
           IconButton(
             tooltip: 'My Profile',
             onPressed: () {

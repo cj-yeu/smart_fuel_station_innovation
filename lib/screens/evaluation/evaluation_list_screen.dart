@@ -9,12 +9,10 @@ class EvaluationListScreen extends StatefulWidget {
   const EvaluationListScreen({super.key});
 
   @override
-  State<EvaluationListScreen> createState() =>
-      _EvaluationListScreenState();
+  State<EvaluationListScreen> createState() => _EvaluationListScreenState();
 }
 
-class _EvaluationListScreenState
-    extends State<EvaluationListScreen> {
+class _EvaluationListScreenState extends State<EvaluationListScreen> {
   List<BusinessEvaluation> evaluations = [];
   bool isLoading = true;
   String? errorMessage;
@@ -44,9 +42,7 @@ class _EvaluationListScreenState
           .order('created_at', ascending: false);
 
       final loadedEvaluations = data
-          .map<BusinessEvaluation>(
-            (item) => BusinessEvaluation.fromMap(item),
-      )
+          .map<BusinessEvaluation>((item) => BusinessEvaluation.fromMap(item))
           .toList();
 
       if (!mounted) return;
@@ -77,9 +73,7 @@ class _EvaluationListScreenState
     }
   }
 
-  Future<void> deleteEvaluation(
-      BusinessEvaluation evaluation,
-      ) async {
+  Future<void> deleteEvaluation(BusinessEvaluation evaluation) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
@@ -87,7 +81,7 @@ class _EvaluationListScreenState
           title: const Text('Delete Evaluation'),
           content: Text(
             'Delete the evaluation for '
-                '${evaluation.stationName}?',
+            '${evaluation.stationName}?',
           ),
           actions: [
             TextButton(
@@ -162,7 +156,7 @@ class _EvaluationListScreenState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F7F6),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text('Business Evaluations'),
         backgroundColor: const Color(0xFF168C4B),
@@ -196,9 +190,7 @@ class _EvaluationListScreenState
 
   Widget buildBody() {
     if (isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(),
-      );
+      return const Center(child: CircularProgressIndicator());
     }
 
     if (errorMessage != null) {
@@ -208,11 +200,7 @@ class _EvaluationListScreenState
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(
-                Icons.error_outline,
-                size: 60,
-                color: Colors.red,
-              ),
+              const Icon(Icons.error_outline, size: 60, color: Colors.red),
               const SizedBox(height: 16),
               Text(errorMessage!),
               const SizedBox(height: 16),
@@ -240,19 +228,12 @@ class _EvaluationListScreenState
           physics: const AlwaysScrollableScrollPhysics(),
           children: const [
             SizedBox(height: 140),
-            Icon(
-              Icons.bar_chart_outlined,
-              size: 90,
-              color: Colors.black26,
-            ),
+            Icon(Icons.bar_chart_outlined, size: 90, color: Colors.black26),
             SizedBox(height: 20),
             Text(
               'No evaluations yet',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
             SizedBox(height: 8),
             Text(
@@ -272,9 +253,7 @@ class _EvaluationListScreenState
         itemCount: evaluations.length,
         itemBuilder: (context, index) {
           final evaluation = evaluations[index];
-          final color = categoryColor(
-            evaluation.profitabilityCategory,
-          );
+          final color = categoryColor(evaluation.profitabilityCategory);
 
           return Card(
             margin: const EdgeInsets.only(bottom: 14),
@@ -283,9 +262,8 @@ class _EvaluationListScreenState
                 final updated = await Navigator.push<bool>(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => EditEvaluationScreen(
-                      evaluation: evaluation,
-                    ),
+                    builder: (context) =>
+                        EditEvaluationScreen(evaluation: evaluation),
                   ),
                 );
 
@@ -300,10 +278,7 @@ class _EvaluationListScreenState
               contentPadding: const EdgeInsets.all(16),
               leading: CircleAvatar(
                 backgroundColor: color.withValues(alpha: 0.15),
-                child: Icon(
-                  Icons.local_gas_station,
-                  color: color,
-                ),
+                child: Icon(Icons.local_gas_station, color: color),
               ),
               title: Text(
                 evaluation.stationName,
@@ -316,20 +291,17 @@ class _EvaluationListScreenState
                 padding: const EdgeInsets.only(top: 8),
                 child: Text(
                   'Score: '
-                      '${evaluation.profitabilityScore.toStringAsFixed(1)}/100\n'
-                      'Monthly Profit: '
-                      'RM${evaluation.monthlyProfit.toStringAsFixed(2)}\n'
-                      '${evaluation.profitabilityCategory}',
+                  '${evaluation.profitabilityScore.toStringAsFixed(1)}/100\n'
+                  'Monthly Profit: '
+                  'RM${evaluation.monthlyProfit.toStringAsFixed(2)}\n'
+                  '${evaluation.profitabilityCategory}',
                 ),
               ),
               isThreeLine: true,
               trailing: IconButton(
                 tooltip: 'Delete Evaluation',
                 onPressed: () => deleteEvaluation(evaluation),
-                icon: const Icon(
-                  Icons.delete_outline,
-                  color: Colors.red,
-                ),
+                icon: const Icon(Icons.delete_outline, color: Colors.red),
               ),
             ),
           );

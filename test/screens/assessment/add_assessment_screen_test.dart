@@ -306,7 +306,7 @@ void main() {
     await expectAssessmentFieldValue(
       tester,
       label: 'Registered Vehicle Count',
-      hint: 'Enter your local vehicle-demand estimate',
+      hint: 'Enter your local estimate',
       value: '25000',
     );
     await expectAssessmentFieldValue(
@@ -402,7 +402,7 @@ void main() {
     await expectAssessmentFieldValue(
       tester,
       label: 'Registered Vehicle Count',
-      hint: 'Enter your local vehicle-demand estimate',
+      hint: 'Enter your local estimate',
       value: '25000',
     );
     expect(find.text('25000'), findsOneWidget);
@@ -668,7 +668,7 @@ Future<void> enterValidForm(WidgetTester tester) async {
   await enterAssessmentField(
     tester,
     label: 'Registered Vehicle Count',
-    hint: 'Enter your local vehicle-demand estimate',
+    hint: 'Enter your local estimate',
     value: '25000',
   );
   await enterAssessmentField(

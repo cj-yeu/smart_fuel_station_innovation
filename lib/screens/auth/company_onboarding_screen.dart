@@ -252,7 +252,7 @@ class _CompanyOnboardingScreenState extends State<CompanyOnboardingScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F7F6),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text('Join Your Company'),
         backgroundColor: const Color(0xFF168C4B),

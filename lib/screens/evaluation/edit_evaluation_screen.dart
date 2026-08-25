@@ -21,12 +21,10 @@ class EditEvaluationScreen extends StatefulWidget {
   });
 
   @override
-  State<EditEvaluationScreen> createState() =>
-      _EditEvaluationScreenState();
+  State<EditEvaluationScreen> createState() => _EditEvaluationScreenState();
 }
 
-class _EditEvaluationScreenState
-    extends State<EditEvaluationScreen> {
+class _EditEvaluationScreenState extends State<EditEvaluationScreen> {
   late final TextEditingController stationNameController;
   late final TextEditingController fuelPriceController;
   late final TextEditingController fuelCostController;
@@ -52,11 +50,10 @@ class _EditEvaluationScreenState
 
     final evaluation = widget.evaluation;
     officialFuelPriceLoader =
-        widget.officialFuelPriceLoader ?? OfficialFuelPriceRepository().loadLatest;
+        widget.officialFuelPriceLoader ??
+        OfficialFuelPriceRepository().loadLatest;
 
-    stationNameController = TextEditingController(
-      text: evaluation.stationName,
-    );
+    stationNameController = TextEditingController(text: evaluation.stationName);
 
     fuelPriceController = TextEditingController(
       text: evaluation.fuelPrice.toString(),
@@ -140,9 +137,7 @@ class _EditEvaluationScreenState
 
     final fuelPrice = parseDouble(fuelPriceController);
     final fuelCost = parseDouble(fuelCostController);
-    final dailyCustomers = int.tryParse(
-      dailyCustomersController.text.trim(),
-    );
+    final dailyCustomers = int.tryParse(dailyCustomersController.text.trim());
     final averageLitres = parseDouble(averageLitresController);
     final rental = parseDouble(rentalController);
     final salary = parseDouble(salaryController);
@@ -181,15 +176,21 @@ class _EditEvaluationScreenState
         maintenance < 0 ||
         otherCost < 0 ||
         investment < 0) {
-      showMessage(
-        'Values cannot be negative',
-        isError: true,
-      );
+      showMessage('Values cannot be negative', isError: true);
       return;
     }
 
-    if (![fuelPrice, fuelCost, averageLitres, rental, salary, utilities,
-          maintenance, otherCost, investment].every((value) => value.isFinite)) {
+    if (![
+      fuelPrice,
+      fuelCost,
+      averageLitres,
+      rental,
+      salary,
+      utilities,
+      maintenance,
+      otherCost,
+      investment,
+    ].every((value) => value.isFinite)) {
       showMessage('Values must be finite numbers', isError: true);
       return;
     }
@@ -223,31 +224,30 @@ class _EditEvaluationScreenState
       await Supabase.instance.client
           .from('business_evaluations')
           .update({
-        'station_name': stationName,
-        'fuel_price': fuelPrice,
-        'fuel_purchase_cost': fuelCost,
-        'daily_customers': dailyCustomers,
-        'average_litres': averageLitres,
-        'monthly_rental': rental,
-        'monthly_staff_salary': salary,
-        'monthly_utilities': utilities,
-        'monthly_maintenance': maintenance,
-        'monthly_other_cost': otherCost,
-        'initial_investment': investment,
-        'monthly_sales_volume': result.monthlySalesVolume,
-        'monthly_revenue': result.monthlyRevenue,
-        'monthly_fuel_cost': result.monthlyFuelCost,
-        'monthly_operating_cost':
-        result.monthlyOperatingCost,
-        'monthly_profit': result.monthlyProfit,
-        'profit_margin': result.profitMargin,
-        'roi': result.roi,
-        'break_even_months': result.breakEvenMonths,
-        'profitability_score': result.profitabilityScore,
-        'profitability_category': result.category,
-        'recommendation': result.recommendation,
-        'explanation': result.explanation,
-      })
+            'station_name': stationName,
+            'fuel_price': fuelPrice,
+            'fuel_purchase_cost': fuelCost,
+            'daily_customers': dailyCustomers,
+            'average_litres': averageLitres,
+            'monthly_rental': rental,
+            'monthly_staff_salary': salary,
+            'monthly_utilities': utilities,
+            'monthly_maintenance': maintenance,
+            'monthly_other_cost': otherCost,
+            'initial_investment': investment,
+            'monthly_sales_volume': result.monthlySalesVolume,
+            'monthly_revenue': result.monthlyRevenue,
+            'monthly_fuel_cost': result.monthlyFuelCost,
+            'monthly_operating_cost': result.monthlyOperatingCost,
+            'monthly_profit': result.monthlyProfit,
+            'profit_margin': result.profitMargin,
+            'roi': result.roi,
+            'break_even_months': result.breakEvenMonths,
+            'profitability_score': result.profitabilityScore,
+            'profitability_category': result.category,
+            'recommendation': result.recommendation,
+            'explanation': result.explanation,
+          })
           .eq('id', widget.evaluation.id)
           .eq('user_id', user.id);
 
@@ -256,10 +256,8 @@ class _EditEvaluationScreenState
       final completed = await Navigator.push<bool>(
         context,
         MaterialPageRoute(
-          builder: (context) => EvaluationResultScreen(
-            stationName: stationName,
-            result: result,
-          ),
+          builder: (context) =>
+              EvaluationResultScreen(stationName: stationName, result: result),
         ),
       );
 
@@ -321,7 +319,7 @@ class _EditEvaluationScreenState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F7F6),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text('Update Profitability Evaluation'),
         backgroundColor: const Color(0xFF168C4B),
@@ -422,16 +420,16 @@ class _EditEvaluationScreenState
             ),
             icon: isSaving
                 ? const SizedBox(
-              width: 22,
-              height: 22,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: Colors.white,
-              ),
-            )
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
                 : const Icon(Icons.calculate),
             label: Text(
-                isSaving ? 'Calculating...' : 'Calculate Profitability',
+              isSaving ? 'Calculating...' : 'Calculate Profitability',
               style: const TextStyle(fontSize: 16),
             ),
           ),
@@ -442,16 +440,10 @@ class _EditEvaluationScreenState
 
   Widget sectionTitle(String title) {
     return Padding(
-      padding: const EdgeInsets.only(
-        top: 8,
-        bottom: 16,
-      ),
+      padding: const EdgeInsets.only(top: 8, bottom: 16),
       child: Text(
         title,
-        style: const TextStyle(
-          fontSize: 19,
-          fontWeight: FontWeight.bold,
-        ),
+        style: const TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
       ),
     );
   }
@@ -525,7 +517,9 @@ class _EditEvaluationScreenState
                     'Official weekly retail price: RM '
                     '${_selectedOfficialPrice.toStringAsFixed(2)} / litre',
                   ),
-                  Text('Effective: ${_formatEffectiveDate(price.effectiveDate)}'),
+                  Text(
+                    'Effective: ${_formatEffectiveDate(price.effectiveDate)}',
+                  ),
                   TextButton(
                     onPressed: _openOfficialSource,
                     child: const Text(
@@ -533,7 +527,9 @@ class _EditEvaluationScreenState
                     ),
                   ),
                   const Text('Weekly official retail price data.'),
-                  const Text('Manual override is allowed for scenario analysis.'),
+                  const Text(
+                    'Manual override is allowed for scenario analysis.',
+                  ),
                   const SizedBox(height: 4),
                   OutlinedButton(
                     onPressed: useOfficialPrice,
@@ -590,9 +586,7 @@ class _EditEvaluationScreenState
       child: TextField(
         controller: controller,
         keyboardType: decimal
-            ? const TextInputType.numberWithOptions(
-          decimal: true,
-        )
+            ? const TextInputType.numberWithOptions(decimal: true)
             : number
             ? TextInputType.number
             : TextInputType.text,

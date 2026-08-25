@@ -3,9 +3,12 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../models/station_assessment.dart';
 import '../../models/station_assessment_create_input.dart';
+import '../../models/east_malaysia_map_selection.dart';
+import '../../models/east_malaysia_site_validation_result.dart';
 import '../../services/station_assessment_repository.dart';
 import '../../services/station_assessment_service.dart';
 import 'assessment_result_screen.dart';
+import 'east_malaysia_map_screen.dart';
 
 typedef AssessmentUpdater =
     Future<StationAssessment> Function(
@@ -41,6 +44,49 @@ class _EditAssessmentScreenState extends State<EditAssessmentScreen> {
   int landAccessibility = 3;
 
   bool isSaving = false;
+
+  EastMalaysiaSiteValidationResult? get storedValidationResult {
+    final assessment = widget.assessment;
+    final location = assessment.siteLocation;
+    final radius = assessment.analysisRadiusKm;
+    final territory = assessment.confirmedTerritory;
+    final datasetId = assessment.boundaryDatasetId;
+    if (assessment.geographicValidationStatus !=
+            StationAssessmentGeographicStatus.inside ||
+        location == null ||
+        radius == null ||
+        territory == null ||
+        datasetId == null) {
+      return null;
+    }
+
+    return EastMalaysiaSiteValidationResult.fromRpcRow(
+      row: {
+        'validation_status': 'inside',
+        'confirmed_territory': territory.storageValue,
+        'boundary_dataset_id': datasetId,
+      },
+      point: location,
+      analysisRadiusKm: radius.toDouble(),
+    );
+  }
+
+  Future<void> viewStoredSiteOnMap() async {
+    final validation = storedValidationResult;
+    if (validation == null) return;
+
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => EastMalaysiaMapScreen(
+          initialSelection: EastMalaysiaMapSelection(
+            validationResult: validation,
+          ),
+          allowCandidateUpdate: false,
+        ),
+      ),
+    );
+  }
 
   @override
   void initState() {
@@ -207,7 +253,7 @@ class _EditAssessmentScreenState extends State<EditAssessmentScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F7F6),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text('Update Assessment'),
         backgroundColor: const Color(0xFF168C4B),
@@ -216,6 +262,33 @@ class _EditAssessmentScreenState extends State<EditAssessmentScreen> {
       body: ListView(
         padding: const EdgeInsets.all(24),
         children: [
+          if (storedValidationResult != null) ...[
+            OutlinedButton.icon(
+              key: const ValueKey('view-stored-site-map-button'),
+              onPressed: viewStoredSiteOnMap,
+              icon: const Icon(Icons.map_outlined),
+              label: const Text('View Validated Site Map'),
+            ),
+            const SizedBox(height: 12),
+            DecoratedBox(
+              decoration: const BoxDecoration(
+                color: Color(0xFFE7F3EC),
+                borderRadius: BorderRadius.all(Radius.circular(12)),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Text(
+                  'Validated site: '
+                  '${widget.assessment.siteLocation!.latitude.toStringAsFixed(5)}, '
+                  '${widget.assessment.siteLocation!.longitude.toStringAsFixed(5)}'
+                  '\nRadius: ${widget.assessment.analysisRadiusKm} km'
+                  '\nConfirmed territory: ${widget.assessment.confirmedTerritory!.displayLabel}'
+                  '\nGeographically validated',
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+          ],
           const Text(
             'Location and Demand',
             style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
@@ -237,9 +310,17 @@ class _EditAssessmentScreenState extends State<EditAssessmentScreen> {
           inputField(
             controller: vehicleCountController,
             label: 'Registered Vehicle Count',
-            hint: 'Estimated vehicles in the area',
+            hint: 'Enter your local estimate',
             icon: Icons.directions_car_outlined,
             isNumber: true,
+          ),
+          const Padding(
+            padding: EdgeInsets.only(bottom: 16),
+            child: Text(
+              'Enter a local estimate manually. No verified dataset provides '
+              'the registered-vehicle count within the selected radius.',
+              style: TextStyle(fontSize: 12, color: Colors.black54),
+            ),
           ),
           const SizedBox(height: 8),
           const Text(

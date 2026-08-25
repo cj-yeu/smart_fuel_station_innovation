@@ -31,7 +31,7 @@ class EvaluationResultScreen extends StatelessWidget {
     final color = categoryColor;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F7F6),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text('Profitability Evaluation'),
         backgroundColor: const Color(0xFF168C4B),
@@ -43,19 +43,16 @@ class EvaluationResultScreen extends StatelessWidget {
           Text(
             stationName,
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-            ),
+            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 20),
           scoreCard(color),
           const SizedBox(height: 18),
           metricsGrid(),
           const SizedBox(height: 18),
-          financialChart(),
+          financialChart(context),
           const SizedBox(height: 18),
-          costChart(),
+          costChart(context),
           const SizedBox(height: 18),
           informationCard(
             icon: Icons.recommend,
@@ -104,17 +101,11 @@ class EvaluationResultScreen extends StatelessWidget {
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: color.withValues(alpha: 0.4),
-        ),
+        border: Border.all(color: color.withValues(alpha: 0.4)),
       ),
       child: Column(
         children: [
-          Icon(
-            Icons.analytics,
-            size: 54,
-            color: color,
-          ),
+          Icon(Icons.analytics, size: 54, color: color),
           const SizedBox(height: 10),
           Text(
             result.profitabilityScore.toStringAsFixed(1),
@@ -187,38 +178,25 @@ class EvaluationResultScreen extends StatelessWidget {
     );
   }
 
-  Widget metricCard(
-      String title,
-      String value,
-      IconData icon,
-      ) {
+  Widget metricCard(String title, String value, IconData icon) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              icon,
-              color: const Color(0xFF168C4B),
-            ),
+            Icon(icon, color: const Color(0xFF168C4B)),
             const SizedBox(height: 7),
             Text(
               title,
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Colors.black54,
-                fontSize: 12,
-              ),
+              style: const TextStyle(color: Colors.black54, fontSize: 12),
             ),
             const SizedBox(height: 4),
             Text(
               value,
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 14,
-              ),
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
             ),
           ],
         ),
@@ -226,7 +204,7 @@ class EvaluationResultScreen extends StatelessWidget {
     );
   }
 
-  Widget financialChart() {
+  Widget financialChart(BuildContext context) {
     final maximum = math.max(
       result.monthlyRevenue,
       result.monthlyOperatingCost,
@@ -241,12 +219,34 @@ class EvaluationResultScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Monthly Financial Comparison',
-              style: TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.bold,
-              ),
+            chartTitle(
+              context,
+              title: 'Monthly Financial Comparison',
+              informationTitle: 'Monthly financial comparison',
+              information:
+                  'Monthly revenue = monthly sales volume × fuel price.\n\n'
+                  'Monthly operating cost = fuel cost + rent + staff salaries + '
+                  'utilities + maintenance + other entered costs.\n\n'
+                  'Monthly profit = monthly revenue − monthly operating cost. '
+                  'These values use the assumptions entered for this evaluation.',
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 12,
+              runSpacing: 6,
+              children: [
+                chartLegendItem(Colors.blue, 'Revenue', result.monthlyRevenue),
+                chartLegendItem(
+                  Colors.orange,
+                  'Cost',
+                  result.monthlyOperatingCost,
+                ),
+                chartLegendItem(
+                  result.monthlyProfit >= 0 ? Colors.green : Colors.red,
+                  'Profit',
+                  result.monthlyProfit,
+                ),
+              ],
             ),
             const SizedBox(height: 22),
             SizedBox(
@@ -256,11 +256,30 @@ class EvaluationResultScreen extends StatelessWidget {
                   minY: minimum,
                   maxY: chartMaximum,
                   alignment: BarChartAlignment.spaceAround,
-                  gridData: const FlGridData(show: false),
+                  gridData: FlGridData(
+                    show: true,
+                    drawVerticalLine: false,
+                    horizontalInterval: chartMaximum / 4,
+                    getDrawingHorizontalLine: (value) => FlLine(
+                      color: Colors.black12,
+                      strokeWidth: value == 0 ? 1.2 : 0.7,
+                    ),
+                  ),
                   borderData: FlBorderData(show: false),
                   titlesData: FlTitlesData(
-                    leftTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false),
+                    leftTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 54,
+                        interval: chartMaximum / 4,
+                        getTitlesWidget: (value, meta) => SideTitleWidget(
+                          meta: meta,
+                          child: Text(
+                            formatAxisCurrency(value),
+                            style: const TextStyle(fontSize: 10),
+                          ),
+                        ),
+                      ),
                     ),
                     rightTitles: const AxisTitles(
                       sideTitles: SideTitles(showTitles: false),
@@ -273,11 +292,7 @@ class EvaluationResultScreen extends StatelessWidget {
                         showTitles: true,
                         reservedSize: 38,
                         getTitlesWidget: (value, meta) {
-                          final labels = [
-                            'Revenue',
-                            'Cost',
-                            'Profit',
-                          ];
+                          final labels = ['Revenue', 'Cost', 'Profit'];
 
                           final index = value.toInt();
 
@@ -297,22 +312,12 @@ class EvaluationResultScreen extends StatelessWidget {
                     ),
                   ),
                   barGroups: [
-                    chartBar(
-                      0,
-                      result.monthlyRevenue,
-                      Colors.blue,
-                    ),
-                    chartBar(
-                      1,
-                      result.monthlyOperatingCost,
-                      Colors.orange,
-                    ),
+                    chartBar(0, result.monthlyRevenue, Colors.blue),
+                    chartBar(1, result.monthlyOperatingCost, Colors.orange),
                     chartBar(
                       2,
                       result.monthlyProfit,
-                      result.monthlyProfit >= 0
-                          ? Colors.green
-                          : Colors.red,
+                      result.monthlyProfit >= 0 ? Colors.green : Colors.red,
                     ),
                   ],
                 ),
@@ -324,11 +329,7 @@ class EvaluationResultScreen extends StatelessWidget {
     );
   }
 
-  BarChartGroupData chartBar(
-      int index,
-      double value,
-      Color color,
-      ) {
+  BarChartGroupData chartBar(int index, double value, Color color) {
     return BarChartGroupData(
       x: index,
       barRods: [
@@ -342,12 +343,9 @@ class EvaluationResultScreen extends StatelessWidget {
     );
   }
 
-  Widget costChart() {
+  Widget costChart(BuildContext context) {
     final fuelCost = result.monthlyFuelCost;
-    final fixedCost = math.max(
-      0.0,
-      result.monthlyOperatingCost - fuelCost,
-    );
+    final fixedCost = math.max(0.0, result.monthlyOperatingCost - fuelCost);
 
     if (result.monthlyOperatingCost <= 0) {
       return const SizedBox.shrink();
@@ -359,12 +357,34 @@ class EvaluationResultScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Monthly Cost Composition',
-              style: TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.bold,
-              ),
+            chartTitle(
+              context,
+              title: 'Monthly Cost Composition',
+              informationTitle: 'Monthly cost composition',
+              information:
+                  'Fuel cost = monthly sales volume × fuel purchase '
+                  'cost. Other operating cost combines rent, staff salaries, '
+                  'utilities, maintenance and other entered costs. The pie chart '
+                  'shows each portion of total monthly operating cost.',
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 12,
+              runSpacing: 6,
+              children: [
+                chartLegendItem(
+                  Colors.blue,
+                  'Fuel cost',
+                  fuelCost,
+                  result.monthlyOperatingCost,
+                ),
+                chartLegendItem(
+                  Colors.orange,
+                  'Other operating cost',
+                  fixedCost,
+                  result.monthlyOperatingCost,
+                ),
+              ],
             ),
             const SizedBox(height: 18),
             SizedBox(
@@ -376,7 +396,10 @@ class EvaluationResultScreen extends StatelessWidget {
                   sections: [
                     PieChartSectionData(
                       value: fuelCost,
-                      title: 'Fuel',
+                      title: percentageText(
+                        fuelCost,
+                        result.monthlyOperatingCost,
+                      ),
                       color: Colors.blue,
                       radius: 65,
                       titleStyle: const TextStyle(
@@ -386,7 +409,10 @@ class EvaluationResultScreen extends StatelessWidget {
                     ),
                     PieChartSectionData(
                       value: fixedCost,
-                      title: 'Operating',
+                      title: percentageText(
+                        fixedCost,
+                        result.monthlyOperatingCost,
+                      ),
                       color: Colors.orange,
                       radius: 65,
                       titleStyle: const TextStyle(
@@ -400,6 +426,89 @@ class EvaluationResultScreen extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget chartTitle(
+    BuildContext context, {
+    required String title,
+    required String informationTitle,
+    required String information,
+  }) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            title,
+            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+          ),
+        ),
+        IconButton(
+          tooltip: 'How this is calculated',
+          icon: const Icon(Icons.info_outline),
+          onPressed: () => showInformationDialog(
+            context,
+            title: informationTitle,
+            message: information,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget chartLegendItem(
+    Color color,
+    String label,
+    double value, [
+    double? total,
+  ]) {
+    final percentage = total == null || total <= 0
+        ? ''
+        : ' (${(value / total * 100).toStringAsFixed(1)}%)';
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 5),
+        Text(
+          '$label: RM${value.toStringAsFixed(2)}$percentage',
+          style: const TextStyle(fontSize: 12),
+        ),
+      ],
+    );
+  }
+
+  String percentageText(double value, double total) =>
+      total <= 0 ? '0%' : '${(value / total * 100).toStringAsFixed(0)}%';
+
+  String formatAxisCurrency(double value) {
+    if (value.abs() >= 1000) {
+      return 'RM${(value / 1000).toStringAsFixed(0)}k';
+    }
+    return 'RM${value.toStringAsFixed(0)}';
+  }
+
+  void showInformationDialog(
+    BuildContext context, {
+    required String title,
+    required String message,
+  }) {
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: SingleChildScrollView(child: Text(message)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
       ),
     );
   }
@@ -431,10 +540,7 @@ class EvaluationResultScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  Text(
-                    content,
-                    style: const TextStyle(height: 1.4),
-                  ),
+                  Text(content, style: const TextStyle(height: 1.4)),
                 ],
               ),
             ),

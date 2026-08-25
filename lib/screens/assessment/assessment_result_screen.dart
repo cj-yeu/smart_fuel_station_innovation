@@ -39,7 +39,7 @@ class AssessmentResultScreen extends StatelessWidget {
     final color = categoryColor;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F7F6),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text('Assessment Result'),
         backgroundColor: const Color(0xFF168C4B),
@@ -51,10 +51,7 @@ class AssessmentResultScreen extends StatelessWidget {
           Text(
             locationName,
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-            ),
+            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 24),
           Container(
@@ -62,17 +59,11 @@ class AssessmentResultScreen extends StatelessWidget {
             decoration: BoxDecoration(
               color: color.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: color.withValues(alpha: 0.4),
-              ),
+              border: Border.all(color: color.withValues(alpha: 0.4)),
             ),
             child: Column(
               children: [
-                Icon(
-                  categoryIcon,
-                  size: 64,
-                  color: color,
-                ),
+                Icon(categoryIcon, size: 64, color: color),
                 const SizedBox(height: 14),
                 Text(
                   result.finalScore.toStringAsFixed(1),
@@ -145,11 +136,7 @@ class AssessmentResultScreen extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(
-              icon,
-              color: color,
-              size: 30,
-            ),
+            Icon(icon, color: color, size: 30),
             const SizedBox(width: 14),
             Expanded(
               child: Column(
@@ -163,10 +150,7 @@ class AssessmentResultScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  Text(
-                    content,
-                    style: const TextStyle(height: 1.4),
-                  ),
+                  Text(content, style: const TextStyle(height: 1.4)),
                 ],
               ),
             ),
