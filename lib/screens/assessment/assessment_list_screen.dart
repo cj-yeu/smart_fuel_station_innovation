@@ -204,7 +204,7 @@ class _AssessmentListScreenState extends State<AssessmentListScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F7F6),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text('Station Assessments'),
         backgroundColor: const Color(0xFF168C4B),
@@ -274,20 +274,26 @@ class _AssessmentListScreenState extends State<AssessmentListScreen> {
         onRefresh: loadAssessments,
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
-          children: const [
-            SizedBox(height: 140),
-            Icon(Icons.analytics_outlined, size: 90, color: Colors.black26),
-            SizedBox(height: 20),
-            Text(
+          children: [
+            const SizedBox(height: 140),
+            Icon(
+              Icons.analytics_outlined,
+              size: 90,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(height: 20),
+            const Text(
               'No assessments yet',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
-            SizedBox(height: 8),
+            const SizedBox(height: 8),
             Text(
               'Create an assessment to evaluate a location.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.black54),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
           ],
         ),
@@ -365,7 +371,7 @@ class _AssessmentListScreenState extends State<AssessmentListScreen> {
                   : Icon(
                       Icons.lock_outline,
                       key: ValueKey('read-only-assessment-${assessment.id}'),
-                      color: Colors.black45,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
             ),
           );

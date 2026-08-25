@@ -8,6 +8,8 @@ import 'package:smart_fuell_station_innovation/models/east_malaysia_site_validat
 import 'package:smart_fuell_station_innovation/models/east_malaysia_map_selection.dart';
 import 'package:smart_fuell_station_innovation/models/east_malaysia_territory.dart';
 import 'package:smart_fuell_station_innovation/models/geo_point.dart';
+import 'package:smart_fuell_station_innovation/models/nearby_fuel_station_result.dart';
+import 'package:smart_fuell_station_innovation/models/site_factor_intelligence_result.dart';
 import 'package:smart_fuell_station_innovation/screens/assessment/east_malaysia_map_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -241,7 +243,11 @@ void main() {
     await tester.tap(find.text('Open map'));
     await tester.pumpAndSettle();
     await selectAndValidate(tester);
-    await tester.tap(find.byKey(const ValueKey('use-candidate-button')));
+    final useCandidateButton = find.byKey(
+      const ValueKey('use-candidate-button'),
+    );
+    await ensureMapPanelTargetMounted(tester, useCandidateButton);
+    await tester.tap(useCandidateButton);
     await tester.pumpAndSettle();
 
     expect(returnedResult!.validationResult, same(expectedResult));
@@ -362,13 +368,101 @@ void main() {
     expect(find.text('Confirmed in Sabah'), findsOneWidget);
     expect(nextPoint, secondPoint);
 
-    await tester.tap(find.byKey(const ValueKey('analysis-radius-dropdown')));
+    final radiusDropdown = find.byKey(
+      const ValueKey('analysis-radius-dropdown'),
+    );
+    await ensureMapPanelTargetMounted(tester, radiusDropdown);
+    await tester.tap(radiusDropdown);
     await tester.pumpAndSettle();
     await tester.tap(find.text('3 km').last);
     await tester.pumpAndSettle();
     expect(find.text('Not yet geographically validated'), findsOneWidget);
     expect(find.textContaining('1.55330'), findsOneWidget);
     expect(nextRadius, 5);
+  });
+
+  testWidgets('a new candidate restarts a pending nearby-station lookup', (
+    tester,
+  ) async {
+    var lookupCount = 0;
+    final pendingLookups = <Completer<NearbyFuelStationResult>>[];
+    await pumpMapScreen(
+      tester,
+      validator: ({required point, required analysisRadiusKm}) async =>
+          validationResult(
+            status: GeographicValidationStatus.inside,
+            point: point,
+            radius: analysisRadiusKm,
+            territory: EastMalaysiaTerritory.sabah,
+          ),
+      nearbyFuelStationLoader: (_) {
+        lookupCount += 1;
+        final pending = Completer<NearbyFuelStationResult>();
+        pendingLookups.add(pending);
+        return pending.future;
+      },
+      mapContentBuilder: selectionBuilder(firstPoint, secondPoint),
+    );
+
+    await tester.tap(find.text('Select first'));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('validate-site-button')));
+    await tester.pump();
+    expect(lookupCount, 1);
+
+    await tester.tap(find.text('Select second'));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('validate-site-button')));
+    await tester.pump();
+    expect(lookupCount, 2);
+
+    for (final pending in pendingLookups) {
+      pending.completeError(StateError('Test lookup cancelled.'));
+    }
+  });
+
+  testWidgets('a new validation restarts a pending site-data lookup', (
+    tester,
+  ) async {
+    var siteDataCalls = 0;
+    final pendingLookups = <Completer<SiteFactorIntelligenceResult>>[];
+    await pumpMapScreen(
+      tester,
+      validator: ({required point, required analysisRadiusKm}) async =>
+          validationResult(
+            status: GeographicValidationStatus.inside,
+            point: point,
+            radius: analysisRadiusKm,
+            territory: EastMalaysiaTerritory.sabah,
+          ),
+      nearbyFuelStationLoader: (_) async =>
+          throw StateError('No test station result.'),
+      siteFactorIntelligenceLoader: (_) {
+        siteDataCalls += 1;
+        final pending = Completer<SiteFactorIntelligenceResult>();
+        pendingLookups.add(pending);
+        return pending.future;
+      },
+      mapContentBuilder: selectionBuilder(firstPoint, secondPoint),
+    );
+
+    await tester.tap(find.text('Select first'));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('validate-site-button')));
+    await tester.pump();
+    await tester.pump();
+    expect(siteDataCalls, 1);
+
+    await tester.tap(find.text('Select second'));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('validate-site-button')));
+    await tester.pump();
+    await tester.pump();
+    expect(siteDataCalls, 2);
+
+    for (final pending in pendingLookups) {
+      pending.completeError(StateError('Test site-data lookup cancelled.'));
+    }
   });
 
   testWidgets('initial inside result is restored and cancel returns null', (
@@ -380,8 +474,9 @@ void main() {
       radius: 10,
       territory: EastMalaysiaTerritory.sarawak,
     );
-    EastMalaysiaMapSelection? returnedResult =
-        EastMalaysiaMapSelection(validationResult: initialResult);
+    EastMalaysiaMapSelection? returnedResult = EastMalaysiaMapSelection(
+      validationResult: initialResult,
+    );
 
     await pumpMapRoute(
       tester,
@@ -398,7 +493,9 @@ void main() {
     expect(find.textContaining('1.55330'), findsOneWidget);
     expect(find.text('10 km'), findsOneWidget);
 
-    await tester.tap(find.text('Cancel'));
+    final cancelButton = find.text('Cancel');
+    await ensureMapPanelTargetMounted(tester, cancelButton);
+    await tester.tap(cancelButton);
     await tester.pumpAndSettle();
     expect(returnedResult, isNull);
   });
@@ -473,14 +570,16 @@ Future<void> pumpMapScreen(
   EastMalaysiaMapContentBuilder? mapContentBuilder,
   EastMalaysiaSiteValidationResult? initialValidationResult,
   NearbyFuelStationLoader? nearbyFuelStationLoader,
+  SiteFactorIntelligenceLoader? siteFactorIntelligenceLoader,
 }) {
   return tester.pumpWidget(
     MaterialApp(
       home: EastMalaysiaMapScreen(
-          validator: validator,
-          nearbyFuelStationLoader:
-              nearbyFuelStationLoader ??
-              (_) async => throw StateError('No station loader configured.'),
+        validator: validator,
+        nearbyFuelStationLoader:
+            nearbyFuelStationLoader ??
+            (_) async => throw StateError('No station loader configured.'),
+        siteFactorIntelligenceLoader: siteFactorIntelligenceLoader,
         initialValidationResult: initialValidationResult,
         mapContentBuilder:
             mapContentBuilder ??
@@ -496,7 +595,18 @@ Future<void> pumpMapScreen(
 Future<void> selectAndValidate(WidgetTester tester) async {
   await tester.tap(find.text('Select first'));
   await tester.pump();
-  await tester.tap(find.byKey(const ValueKey('validate-site-button')));
+  final validateButton = find.byKey(const ValueKey('validate-site-button'));
+  await ensureMapPanelTargetMounted(tester, validateButton);
+  await tester.tap(validateButton);
+  await tester.pumpAndSettle();
+}
+
+Future<void> ensureMapPanelTargetMounted(
+  WidgetTester tester,
+  Finder target,
+) async {
+  expect(target, findsOneWidget);
+  await tester.ensureVisible(target);
   await tester.pumpAndSettle();
 }
 
@@ -542,21 +652,20 @@ class _MapRouteHost extends StatelessWidget {
       body: Center(
         child: ElevatedButton(
           onPressed: () async {
-            final result =
-                await Navigator.push<EastMalaysiaMapSelection>(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => EastMalaysiaMapScreen(
-                      validator: validator,
-                      mapContentBuilder: mapContentBuilder,
-                      initialValidationResult: initialValidationResult,
-                      nearbyFuelStationLoader:
-                          nearbyFuelStationLoader ??
-                          (_) async =>
-                              throw StateError('No station loader configured.'),
-                    ),
-                  ),
-                );
+            final result = await Navigator.push<EastMalaysiaMapSelection>(
+              context,
+              MaterialPageRoute(
+                builder: (context) => EastMalaysiaMapScreen(
+                  validator: validator,
+                  mapContentBuilder: mapContentBuilder,
+                  initialValidationResult: initialValidationResult,
+                  nearbyFuelStationLoader:
+                      nearbyFuelStationLoader ??
+                      (_) async =>
+                          throw StateError('No station loader configured.'),
+                ),
+              ),
+            );
             onReturned(result);
           },
           child: const Text('Open map'),

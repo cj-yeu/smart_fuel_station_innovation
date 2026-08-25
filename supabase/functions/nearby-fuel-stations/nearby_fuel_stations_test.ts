@@ -2,6 +2,7 @@ import {
   InvalidNearbyFuelStationsRequest,
   UpstreamFuelStationsFailure,
   buildFixedOverpassQuery,
+  fallbackOverpassEndpoint,
   haversineDistanceKm,
   maximumOverpassResponseBytes,
   maximumRequestBodyBytes,
@@ -9,6 +10,7 @@ import {
   maximumUpstreamElementCount,
   openStreetMapAttribution,
   openStreetMapAttributionUrl,
+  overpassEndpoint,
   parseCachedNearbyFuelStationsResult,
   parseBearerToken,
   parseBoundedNearbyFuelStationsRequestBody,
@@ -208,6 +210,19 @@ Deno.test("maps timeout and upstream failure without a network call", async () =
     ),
     UpstreamFuelStationsFailure,
   );
+});
+
+Deno.test("uses the fixed fallback only after the primary endpoint fails", async () => {
+  const requestedUrls: string[] = [];
+  const payload = await fetchFixedOverpassPayload(async (url) => {
+    requestedUrls.push(url);
+    return requestedUrls.length == 1
+      ? new Response("", { status: 503 })
+      : new Response('{"elements":[]}');
+  }, request);
+
+  assertEquals(payload, { elements: [] });
+  assertEquals(requestedUrls, [overpassEndpoint, fallbackOverpassEndpoint]);
 });
 
 Deno.test("uses injected validator cache and HTTP without own competitor inference", async () => {

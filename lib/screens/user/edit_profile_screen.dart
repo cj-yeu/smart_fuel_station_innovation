@@ -97,7 +97,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F7F6),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text('Edit Profile'),
         backgroundColor: const Color(0xFF168C4B),
@@ -116,6 +116,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             TextField(
               controller: fullNameController,
               textInputAction: TextInputAction.next,
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
               decoration: const InputDecoration(
                 labelText: 'Full Name',
                 prefixIcon: Icon(Icons.person_outline),
@@ -125,6 +126,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             TextField(
               controller: phoneController,
               keyboardType: TextInputType.phone,
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
               decoration: const InputDecoration(
                 labelText: 'Phone Number',
                 prefixIcon: Icon(Icons.phone_outlined),

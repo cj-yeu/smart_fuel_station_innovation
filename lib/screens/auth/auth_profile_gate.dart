@@ -309,7 +309,7 @@ class _AuthProfileGateState extends State<AuthProfileGate> {
 
   Widget buildProfileErrorState() {
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F7F6),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text('Account Setup'),
         backgroundColor: const Color(0xFF168C4B),
@@ -335,10 +335,12 @@ class _AuthProfileGateState extends State<AuthProfileGate> {
                   style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 10),
-                const Text(
+                Text(
                   'Your account information could not be verified. Please try again or sign out.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.black54),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
                 const SizedBox(height: 24),
                 SizedBox(

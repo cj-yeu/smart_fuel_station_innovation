@@ -92,7 +92,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F7F6),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text('My Profile'),
         backgroundColor: const Color(0xFF168C4B),
@@ -170,7 +170,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Text(
             email,
             textAlign: TextAlign.center,
-            style: const TextStyle(color: Colors.black54),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
           const SizedBox(height: 30),
           profileTile(
@@ -233,7 +235,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     required String role,
   }) {
     return Card(
-      color: const Color(0xFFE8F5EE),
+      color: Theme.of(context).colorScheme.primaryContainer,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Row(
@@ -249,19 +251,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'User → Fuel Company',
                     style: TextStyle(
-                      color: Color(0xFF168C4B),
+                      color: Theme.of(context).colorScheme.onPrimaryContainer,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
                   const SizedBox(height: 8),
                   Text(
                     companyName,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
+                      color: Theme.of(context).colorScheme.onPrimaryContainer,
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -283,12 +286,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
       children: [
         SizedBox(
           width: 112,
-          child: Text(label, style: const TextStyle(color: Colors.black54)),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onPrimaryContainer,
+            ),
+          ),
         ),
         Expanded(
           child: Text(
             value,
-            style: const TextStyle(fontWeight: FontWeight.w500),
+            style: TextStyle(
+              fontWeight: FontWeight.w500,
+              color: Theme.of(context).colorScheme.onPrimaryContainer,
+            ),
           ),
         ),
       ],
@@ -307,7 +318,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
         title: Text(title),
         subtitle: Text(
           value,
-          style: const TextStyle(fontSize: 16, color: Colors.black87),
+          style: TextStyle(
+            fontSize: 16,
+            color: Theme.of(context).colorScheme.onSurface,
+          ),
         ),
       ),
     );
