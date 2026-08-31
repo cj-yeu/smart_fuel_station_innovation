@@ -4,6 +4,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
 import '../../services/business_evaluation_service.dart';
+import '../../utils/evaluation_number_format.dart';
 
 class EvaluationResultScreen extends StatelessWidget {
   final String stationName;
@@ -113,7 +114,7 @@ class EvaluationResultScreen extends StatelessWidget {
           Icon(Icons.analytics, size: 54, color: color),
           const SizedBox(height: 10),
           Text(
-            result.profitabilityScore.toStringAsFixed(1),
+            EvaluationNumberFormat.scoreValue(result.profitabilityScore),
             style: TextStyle(
               fontSize: 48,
               fontWeight: FontWeight.bold,
@@ -182,39 +183,37 @@ class EvaluationResultScreen extends StatelessWidget {
         metricCard(
           context,
           'Monthly Revenue',
-          'RM${result.monthlyRevenue.toStringAsFixed(2)}',
+          EvaluationNumberFormat.currency(result.monthlyRevenue),
           Icons.payments_outlined,
         ),
         metricCard(
           context,
           'Monthly Profit',
-          'RM${result.monthlyProfit.toStringAsFixed(2)}',
+          EvaluationNumberFormat.currency(result.monthlyProfit),
           Icons.trending_up,
         ),
         metricCard(
           context,
           'Profit Margin',
-          '${result.profitMargin.toStringAsFixed(2)}%',
+          EvaluationNumberFormat.percentage(result.profitMargin),
           Icons.percent,
         ),
         metricCard(
           context,
           'Annual ROI',
-          '${result.roi.toStringAsFixed(2)}%',
+          EvaluationNumberFormat.percentage(result.roi),
           Icons.assessment_outlined,
         ),
         metricCard(
           context,
           'Sales Volume',
-          '${result.monthlySalesVolume.toStringAsFixed(0)} L',
+          EvaluationNumberFormat.volumeLitres(result.monthlySalesVolume),
           Icons.local_gas_station_outlined,
         ),
         metricCard(
           context,
           'Break-even',
-          result.breakEvenMonths == null
-              ? 'Not currently profitable'
-              : '${result.breakEvenMonths!.toStringAsFixed(1)} months',
+          EvaluationNumberFormat.breakEvenMonths(result.breakEvenMonths),
           Icons.schedule,
         ),
       ],
@@ -326,6 +325,21 @@ class EvaluationResultScreen extends StatelessWidget {
                     ),
                   ),
                   borderData: FlBorderData(show: false),
+                  barTouchData: BarTouchData(
+                    touchTooltipData: BarTouchTooltipData(
+                      getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                        const labels = ['Revenue', 'Cost', 'Profit'];
+                        return BarTooltipItem(
+                          '${labels[group.x]}\n'
+                          '${EvaluationNumberFormat.currency(rod.toY)}',
+                          TextStyle(
+                            color: rod.color ?? Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        );
+                      },
+                    ),
+                  ),
                   titlesData: FlTitlesData(
                     leftTitles: AxisTitles(
                       sideTitles: SideTitles(
@@ -525,7 +539,7 @@ class EvaluationResultScreen extends StatelessWidget {
   ]) {
     final percentage = total == null || total <= 0
         ? ''
-        : ' (${(value / total * 100).toStringAsFixed(2)}%)';
+        : ' (${EvaluationNumberFormat.percentage(value / total * 100)})';
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -536,22 +550,19 @@ class EvaluationResultScreen extends StatelessWidget {
         ),
         const SizedBox(width: 5),
         Text(
-          '$label: RM${value.toStringAsFixed(2)}$percentage',
+          '$label: ${EvaluationNumberFormat.currency(value)}$percentage',
           style: const TextStyle(fontSize: 12),
         ),
       ],
     );
   }
 
-  String percentageText(double value, double total) =>
-      total <= 0 ? '0.00%' : '${(value / total * 100).toStringAsFixed(2)}%';
+  String percentageText(double value, double total) => total <= 0
+      ? EvaluationNumberFormat.percentage(0)
+      : EvaluationNumberFormat.percentage(value / total * 100);
 
-  String formatAxisCurrency(double value) {
-    if (value.abs() >= 1000) {
-      return 'RM${(value / 1000).toStringAsFixed(2)}k';
-    }
-    return 'RM${value.toStringAsFixed(2)}';
-  }
+  String formatAxisCurrency(double value) =>
+      EvaluationNumberFormat.compactCurrency(value);
 
   void showInformationDialog(
     BuildContext context, {

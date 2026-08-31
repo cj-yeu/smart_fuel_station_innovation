@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../models/business_evaluation.dart';
+import '../../utils/evaluation_number_format.dart';
 
 class EvaluationListScreen extends StatefulWidget {
   const EvaluationListScreen({super.key});
@@ -297,9 +298,9 @@ class _EvaluationListScreenState extends State<EvaluationListScreen> {
                 padding: const EdgeInsets.only(top: 8),
                 child: Text(
                   'Score: '
-                  '${evaluation.profitabilityScore.toStringAsFixed(1)}/100\n'
+                  '${EvaluationNumberFormat.score(evaluation.profitabilityScore)}\n'
                   'Monthly Profit: '
-                  'RM${evaluation.monthlyProfit.toStringAsFixed(2)}\n'
+                  '${EvaluationNumberFormat.currency(evaluation.monthlyProfit)}\n'
                   '${evaluation.profitabilityCategory}',
                 ),
               ),

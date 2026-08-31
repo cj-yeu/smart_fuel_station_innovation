@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../models/official_fuel_price.dart';
 import '../../services/business_evaluation_service.dart';
 import '../../services/official_fuel_price_repository.dart';
+import '../../utils/evaluation_number_format.dart';
 import 'evaluation_result_screen.dart';
 
 typedef EditOfficialFuelPriceLoader = Future<OfficialFuelPrice> Function();
@@ -514,8 +515,9 @@ class _EditEvaluationScreenState extends State<EditEvaluationScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Official weekly retail price: RM '
-                    '${_selectedOfficialPrice.toStringAsFixed(2)} / litre',
+                    'Official weekly retail price: '
+                    '${EvaluationNumberFormat.currency(_selectedOfficialPrice)} '
+                    '/ litre',
                   ),
                   Text(
                     'Effective: ${_formatEffectiveDate(price.effectiveDate)}',

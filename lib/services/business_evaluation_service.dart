@@ -1,3 +1,5 @@
+import '../utils/evaluation_number_format.dart';
+
 class BusinessEvaluationResult {
   final double monthlySalesVolume;
   final double monthlyRevenue;
@@ -187,13 +189,13 @@ class BusinessEvaluationService {
     final breakEvenText = breakEvenMonths == null
         ? 'The station is not currently profitable under the current assumptions.'
         : 'The estimated break-even period is '
-              '${breakEvenMonths.toStringAsFixed(1)} months.';
+              '${EvaluationNumberFormat.breakEvenMonths(breakEvenMonths)}.';
 
     return 'Estimated monthly profit is '
-        'RM${monthlyProfit.toStringAsFixed(2)}, '
+        '${EvaluationNumberFormat.currency(monthlyProfit)}, '
         'with a profit margin of '
-        '${profitMargin.toStringAsFixed(2)}% and '
-        'an annual ROI of ${roi.toStringAsFixed(2)}%. '
+        '${EvaluationNumberFormat.percentage(profitMargin)} and '
+        'an annual ROI of ${EvaluationNumberFormat.percentage(roi)}. '
         '$breakEvenText';
   }
 
