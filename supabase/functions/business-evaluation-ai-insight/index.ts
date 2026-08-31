@@ -6,8 +6,8 @@ import {
 } from "./business_evaluation_ai_insight.ts";
 import {
   type AiInsightStore,
-  type EvaluationReader,
   createAiBusinessAdvisorHandler,
+  type EvaluationReader,
   parseStoredBusinessEvaluation,
   parseStoredBusinessEvaluationAiInsight,
   verifySupabaseAccessToken,
@@ -19,11 +19,12 @@ const supabaseServiceRoleKey = requiredEnvironment("SUPABASE_SERVICE_ROLE_KEY");
 const openAiApiKey = requiredEnvironment("OPENAI_API_KEY");
 
 Deno.serve(createAiBusinessAdvisorHandler({
-  authenticate: (accessToken) => verifySupabaseAccessToken(accessToken, {
-    http: fetch,
-    supabaseUrl,
-    supabaseAnonKey,
-  }),
+  authenticate: (accessToken) =>
+    verifySupabaseAccessToken(accessToken, {
+      http: fetch,
+      supabaseUrl,
+      supabaseAnonKey,
+    }),
   evaluationReader: createEvaluationReader(),
   insightStore: createInsightStore(),
   advisor: createOpenAiBusinessAdvisor({ http: fetch, apiKey: openAiApiKey }),
@@ -33,18 +34,24 @@ function createEvaluationReader(): EvaluationReader {
   return {
     async read(evaluationId, accessToken) {
       const response = await fetch(
-        `${supabaseUrl}/rest/v1/business_evaluations?select=${encodeURIComponent(
-          evaluationSelect,
-        )}&id=eq.${encodeURIComponent(evaluationId)}&limit=2`,
+        `${supabaseUrl}/rest/v1/business_evaluations?select=${
+          encodeURIComponent(
+            evaluationSelect,
+          )
+        }&id=eq.${encodeURIComponent(evaluationId)}&limit=2`,
         {
           headers: callerHeaders(accessToken),
         },
       );
       if (!response.ok) throw new Error("evaluation unavailable");
       const rows = await response.json();
-      if (!Array.isArray(rows)) throw new Error("evaluation response is invalid");
+      if (!Array.isArray(rows)) {
+        throw new Error("evaluation response is invalid");
+      }
       if (rows.length === 0) return null;
-      if (rows.length !== 1) throw new Error("evaluation response is ambiguous");
+      if (rows.length !== 1) {
+        throw new Error("evaluation response is ambiguous");
+      }
       return parseStoredBusinessEvaluation(rows[0]);
     },
   };
@@ -54,9 +61,11 @@ function createInsightStore(): AiInsightStore {
   return {
     async get(evaluationId) {
       const response = await trustedRequest(
-        `/rest/v1/business_evaluation_ai_insights?select=${encodeURIComponent(
-          insightSelect,
-        )}&evaluation_id=eq.${encodeURIComponent(evaluationId)}&limit=2`,
+        `/rest/v1/business_evaluation_ai_insights?select=${
+          encodeURIComponent(
+            insightSelect,
+          )
+        }&evaluation_id=eq.${encodeURIComponent(evaluationId)}&limit=2`,
         { method: "GET" },
       );
       const rows = await response.json();
@@ -97,7 +106,9 @@ function createInsightStore(): AiInsightStore {
   };
 }
 
-function toStoredInsight(insight: AiBusinessAdvisorInsight): Record<string, unknown> {
+function toStoredInsight(
+  insight: AiBusinessAdvisorInsight,
+): Record<string, unknown> {
   return {
     executive_summary: insight.executiveSummary,
     drivers: insight.drivers.map((driver) => ({
@@ -120,7 +131,10 @@ function toStoredInsight(insight: AiBusinessAdvisorInsight): Record<string, unkn
   };
 }
 
-async function trustedRequest(path: string, init: RequestInit): Promise<Response> {
+async function trustedRequest(
+  path: string,
+  init: RequestInit,
+): Promise<Response> {
   const response = await fetch(`${supabaseUrl}${path}`, {
     ...init,
     headers: {

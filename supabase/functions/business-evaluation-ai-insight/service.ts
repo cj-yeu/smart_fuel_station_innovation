@@ -1,16 +1,16 @@
 import {
-  AiBusinessAdvisorUnavailable,
   type AiBusinessAdvisorInsight,
   type AiBusinessAdvisorRequest,
+  AiBusinessAdvisorUnavailable,
+  businessEvaluationAiAdvisorModel,
+  businessEvaluationAiAdvisorPromptVersion,
   type CanonicalBusinessEvaluationAdvisorInput,
+  createCanonicalBusinessEvaluationAdvisorInput,
   InvalidAiBusinessAdvisorInsight,
   InvalidAiBusinessAdvisorRequest,
   InvalidStoredBusinessEvaluation,
-  businessEvaluationAiAdvisorModel,
-  businessEvaluationAiAdvisorPromptVersion,
-  createCanonicalBusinessEvaluationAdvisorInput,
-  parseBoundedAiBusinessAdvisorRequest,
   parseAiBusinessAdvisorInsight,
+  parseBoundedAiBusinessAdvisorRequest,
   sha256Hex,
 } from "./business_evaluation_ai_insight.ts";
 
@@ -118,7 +118,10 @@ export async function verifySupabaseAccessToken(
   dependencies: SupabaseAuthDependencies,
 ): Promise<boolean> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), dependencies.timeoutMs ?? 5_000);
+  const timeout = setTimeout(
+    () => controller.abort(),
+    dependencies.timeoutMs ?? 5_000,
+  );
   try {
     const response = await dependencies.http(
       `${dependencies.supabaseUrl}/auth/v1/user`,
@@ -154,11 +157,15 @@ export function createAiBusinessAdvisorHandler(
 ): (request: Request) => Promise<Response> {
   return async (request) => {
     if (request.method !== "POST") {
-      return jsonResponse({ error: "method_not_allowed" }, 405, { Allow: "POST" });
+      return jsonResponse({ error: "method_not_allowed" }, 405, {
+        Allow: "POST",
+      });
     }
 
     const accessToken = parseBearerToken(request.headers.get("authorization"));
-    if (accessToken === null) return jsonResponse({ error: "unauthorized" }, 401);
+    if (accessToken === null) {
+      return jsonResponse({ error: "unauthorized" }, 401);
+    }
 
     try {
       if (!(await dependencies.authenticate(accessToken))) {
@@ -169,7 +176,9 @@ export function createAiBusinessAdvisorHandler(
     }
 
     try {
-      const advisorRequest = await parseBoundedAiBusinessAdvisorRequest(request);
+      const advisorRequest = await parseBoundedAiBusinessAdvisorRequest(
+        request,
+      );
       const result = await loadAiBusinessAdvisorInsight(
         advisorRequest,
         accessToken,

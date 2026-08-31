@@ -7,6 +7,9 @@ export const maximumOpenAiResponseBytes = 32_768;
 export const openAiTimeoutMs = 18_000;
 export const maximumOpenAiOutputTokens = 1_200;
 
+const advisorDriverTypes = ["strength", "risk"] as const;
+const advisorActionPriorities = ["high", "medium", "low"] as const;
+
 export type AiBusinessAdvisorRequest = {
   evaluationId: string;
 };
@@ -166,7 +169,9 @@ export function createCanonicalBusinessEvaluationAdvisorInput(value: {
   const monthlyOtherCost = finiteNonNegative(value.monthlyOtherCost);
   const initialInvestment = finiteNonNegative(value.initialInvestment);
 
-  if (fuelPrice <= fuelPurchaseCost) throw new InvalidStoredBusinessEvaluation();
+  if (fuelPrice <= fuelPurchaseCost) {
+    throw new InvalidStoredBusinessEvaluation();
+  }
 
   const monthlySalesVolume = finiteNonNegative(value.monthlySalesVolume);
   const monthlyRevenue = finiteNonNegative(value.monthlyRevenue);
@@ -206,7 +211,10 @@ export function createCanonicalBusinessEvaluationAdvisorInput(value: {
       roi,
       break_even_months: breakEvenMonths,
       profitability_score: profitabilityScore,
-      profitability_category: storedBoundedString(value.profitabilityCategory, 80),
+      profitability_category: storedBoundedString(
+        value.profitabilityCategory,
+        80,
+      ),
       recommendation: storedBoundedString(value.recommendation, 1_000),
       explanation: storedBoundedString(value.explanation, 2_000),
     },
@@ -414,25 +422,16 @@ export function parseAiBusinessAdvisorInsight(
   ]);
   const drivers = boundedArray(insight.drivers, 1, 6).map((driver) => {
     const parsed = exactObject(driver, ["type", "factor", "evidence"]);
-    if (parsed.type !== "strength" && parsed.type !== "risk") {
-      throw new InvalidAiBusinessAdvisorInsight();
-    }
     return {
-      type: parsed.type,
+      type: boundedAdvisorEnum(parsed.type, advisorDriverTypes),
       factor: boundedString(parsed.factor, 240),
       evidence: boundedString(parsed.evidence, 360),
     };
   });
   const actions = boundedArray(insight.actions, 3, 3).map((action) => {
     const parsed = exactObject(action, ["priority", "action", "reason"]);
-    if (
-      parsed.priority !== "high" && parsed.priority !== "medium" &&
-      parsed.priority !== "low"
-    ) {
-      throw new InvalidAiBusinessAdvisorInsight();
-    }
     return {
-      priority: parsed.priority,
+      priority: boundedAdvisorEnum(parsed.priority, advisorActionPriorities),
       action: boundedString(parsed.action, 240),
       reason: boundedString(parsed.reason, 360),
     };
@@ -481,7 +480,9 @@ export async function readBoundedUtf8Body(
   createError: () => Error,
   signal?: AbortSignal,
 ): Promise<string> {
-  if (body === null || !Number.isSafeInteger(maximumBytes) || maximumBytes < 1) {
+  if (
+    body === null || !Number.isSafeInteger(maximumBytes) || maximumBytes < 1
+  ) {
     throw createError();
   }
   if (declaredLengthExceedsLimit(contentLength, maximumBytes)) {
@@ -560,6 +561,16 @@ function boundedString(value: unknown, maximumLength: number): string {
   return value;
 }
 
+function boundedAdvisorEnum<const Values extends readonly string[]>(
+  value: unknown,
+  allowedValues: Values,
+): Values[number] {
+  for (const allowedValue of allowedValues) {
+    if (value === allowedValue) return allowedValue;
+  }
+  throw new InvalidAiBusinessAdvisorInsight();
+}
+
 function storedBoundedString(value: unknown, maximumLength: number): string {
   if (
     typeof value !== "string" || value.trim() === "" ||
@@ -570,8 +581,14 @@ function storedBoundedString(value: unknown, maximumLength: number): string {
   return value;
 }
 
-function boundedArray(value: unknown, minimum: number, maximum: number): unknown[] {
-  if (!Array.isArray(value) || value.length < minimum || value.length > maximum) {
+function boundedArray(
+  value: unknown,
+  minimum: number,
+  maximum: number,
+): unknown[] {
+  if (
+    !Array.isArray(value) || value.length < minimum || value.length > maximum
+  ) {
     throw new InvalidAiBusinessAdvisorInsight();
   }
   return value;
@@ -600,10 +617,11 @@ function containsRefusal(value: unknown): boolean {
       return true;
     }
     const content = (item as Record<string, unknown>).content;
-    return Array.isArray(content) && content.some((part) =>
-      part !== null && typeof part === "object" && !Array.isArray(part) &&
-      (part as Record<string, unknown>).type === "refusal"
-    );
+    return Array.isArray(content) &&
+      content.some((part) =>
+        part !== null && typeof part === "object" && !Array.isArray(part) &&
+        (part as Record<string, unknown>).type === "refusal"
+      );
   });
 }
 
@@ -692,7 +710,11 @@ class ExactAiBusinessAdvisorJsonCursor {
         this.#offset += 1;
         const escape = this.source[this.#offset];
         if (escape === "u") {
-          if (!/^[0-9a-fA-F]{4}$/.test(this.source.slice(this.#offset + 1, this.#offset + 5))) {
+          if (
+            !/^[0-9a-fA-F]{4}$/.test(
+              this.source.slice(this.#offset + 1, this.#offset + 5),
+            )
+          ) {
             throw new InvalidAiBusinessAdvisorRequest();
           }
           this.#offset += 5;
@@ -708,7 +730,10 @@ class ExactAiBusinessAdvisorJsonCursor {
   }
 
   private skipWhitespace(): void {
-    while (this.#offset < this.source.length && " \t\n\r".includes(this.source[this.#offset])) {
+    while (
+      this.#offset < this.source.length &&
+      " \t\n\r".includes(this.source[this.#offset])
+    ) {
       this.#offset += 1;
     }
   }
