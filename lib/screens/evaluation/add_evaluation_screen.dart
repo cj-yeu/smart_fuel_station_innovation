@@ -8,6 +8,7 @@ import '../../models/station_assessment.dart';
 import '../../services/business_evaluation_service.dart';
 import '../../services/official_fuel_price_repository.dart';
 import '../../services/station_assessment_repository.dart';
+import '../../utils/evaluation_number_format.dart';
 import 'evaluation_result_screen.dart';
 
 typedef CompanyAssessmentLoader = Future<List<StationAssessment>> Function();
@@ -705,8 +706,9 @@ class _AddEvaluationScreenState extends State<AddEvaluationScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Official weekly retail price: RM '
-                    '${_selectedOfficialPrice.toStringAsFixed(2)} / litre',
+                    'Official weekly retail price: '
+                    '${EvaluationNumberFormat.currency(_selectedOfficialPrice)} '
+                    '/ litre',
                   ),
                   Text(
                     'Effective: ${_formatEffectiveDate(price.effectiveDate)}',
@@ -802,7 +804,10 @@ class _AddEvaluationScreenState extends State<AddEvaluationScreen> {
                   ? 'Geographically validated'
                   : 'Not geographically validated',
             ),
-            Text('Nearby fuel stations: ${assessment.nearbyFuelStations}'),
+            Text(
+              'Nearby fuel stations: '
+              '${EvaluationNumberFormat.wholeNumber(assessment.nearbyFuelStations)}',
+            ),
             Text(
               'Competitor distance: ${assessment.competitorDistanceKm.toStringAsFixed(2)} km',
             ),
