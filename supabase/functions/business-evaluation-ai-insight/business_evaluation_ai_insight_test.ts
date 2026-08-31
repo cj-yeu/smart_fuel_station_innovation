@@ -1,20 +1,20 @@
 import {
   AiBusinessAdvisorUnavailable,
-  InvalidAiBusinessAdvisorInsight,
-  InvalidAiBusinessAdvisorRequest,
   businessEvaluationAiAdvisorModel,
   businessEvaluationAiAdvisorPromptVersion,
   createCanonicalBusinessEvaluationAdvisorInput,
   createOpenAiBusinessAdvisor,
+  InvalidAiBusinessAdvisorInsight,
+  InvalidAiBusinessAdvisorRequest,
   openAiResponsesEndpoint,
   parseAiBusinessAdvisorInsight,
   parseAiBusinessAdvisorRequestJson,
   sha256Hex,
 } from "./business_evaluation_ai_insight.ts";
 import {
+  type AiBusinessAdvisorHandlerDependencies,
   AuthenticationUnavailable,
   createAiBusinessAdvisorHandler,
-  type AiBusinessAdvisorHandlerDependencies,
   type StoredBusinessEvaluation,
   type StoredBusinessEvaluationAiInsight,
   verifySupabaseAccessToken,
@@ -25,14 +25,18 @@ const otherEvaluationId = "22222222-2222-4222-8222-222222222222";
 const userId = "33333333-3333-4333-8333-333333333333";
 const updatedAt = "2026-08-31T00:00:00.000Z";
 
-function assert(condition: unknown, message = "Assertion failed."): asserts condition {
+function assert(
+  condition: unknown,
+  message = "Assertion failed.",
+): asserts condition {
   if (!condition) throw new Error(message);
 }
 
 function assertEquals<T>(actual: T, expected: T, message?: string): void {
   assert(
     JSON.stringify(actual) === JSON.stringify(expected),
-    message ?? `Expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}.`,
+    message ??
+      `Expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}.`,
   );
 }
 
@@ -51,24 +55,34 @@ async function assertRejects(
 
 Deno.test("rejects malformed, duplicate, and extra public request fields", () => {
   assertThrowsRequest(() => parseAiBusinessAdvisorRequestJson("{}"));
-  assertThrowsRequest(() => parseAiBusinessAdvisorRequestJson(
-    `{"evaluation_id":"${evaluationId}","extra":"no"}`,
-  ));
-  assertThrowsRequest(() => parseAiBusinessAdvisorRequestJson(
-    `{"evaluation_id":"${evaluationId}","evalu\\u0061tion_id":"${evaluationId}"}`,
- ));
-  assertThrowsRequest(() => parseAiBusinessAdvisorRequestJson(
-    '{"evaluation_id":123}',
-  ));
-  assertThrowsRequest(() => parseAiBusinessAdvisorRequestJson(
-    `{"evaluation_id":"${otherEvaluationId}"} trailing`,
-  ));
+  assertThrowsRequest(() =>
+    parseAiBusinessAdvisorRequestJson(
+      `{"evaluation_id":"${evaluationId}","extra":"no"}`,
+    )
+  );
+  assertThrowsRequest(() =>
+    parseAiBusinessAdvisorRequestJson(
+      `{"evaluation_id":"${evaluationId}","evalu\\u0061tion_id":"${evaluationId}"}`,
+    )
+  );
+  assertThrowsRequest(() =>
+    parseAiBusinessAdvisorRequestJson(
+      '{"evaluation_id":123}',
+    )
+  );
+  assertThrowsRequest(() =>
+    parseAiBusinessAdvisorRequestJson(
+      `{"evaluation_id":"${otherEvaluationId}"} trailing`,
+    )
+  );
 });
 
 Deno.test("rejects an invalid evaluation UUID", () => {
-  assertThrowsRequest(() => parseAiBusinessAdvisorRequestJson(
-    '{"evaluation_id":"not-a-uuid"}',
-  ));
+  assertThrowsRequest(() =>
+    parseAiBusinessAdvisorRequestJson(
+      '{"evaluation_id":"not-a-uuid"}',
+    )
+  );
 });
 
 Deno.test("returns neutral 401 before any downstream call for missing or malformed auth", async () => {
@@ -86,7 +100,7 @@ Deno.test("returns neutral 401 before any downstream call for missing or malform
 });
 
 Deno.test("returns neutral 401 for an invalid or expired token without downstream calls", async () => {
-  const fake = makeDependencies({ authenticate: async () => false });
+  const fake = makeDependencies({ authenticate: () => Promise.resolve(false) });
   const response = await createAiBusinessAdvisorHandler(fake.dependencies)(
     publicRequest(evaluationId),
   );
@@ -99,9 +113,8 @@ Deno.test("returns neutral 401 for an invalid or expired token without downstrea
 
 Deno.test("maps Auth transport failure to neutral 503 without downstream calls", async () => {
   const fake = makeDependencies({
-    authenticate: async () => {
-      throw new Error("provider response must stay private");
-    },
+    authenticate: () =>
+      Promise.reject(new Error("provider response must stay private")),
   });
   const response = await createAiBusinessAdvisorHandler(fake.dependencies)(
     publicRequest(evaluationId),
@@ -121,17 +134,17 @@ Deno.test("classifies Auth invalid-token, network, 5xx, and invalid JSON respons
   assertEquals(
     await verifySupabaseAccessToken("invalid", {
       ...common,
-      http: async () => new Response(null, { status: 401 }),
+      http: () => Promise.resolve(new Response(null, { status: 401 })),
     }),
     false,
   );
-  for (const http of [
-    async () => {
-      throw new Error("network failure");
-    },
-    async () => new Response("provider body", { status: 503 }),
-    async () => new Response("not-json", { status: 200 }),
-  ]) {
+  for (
+    const http of [
+      () => Promise.reject(new Error("network failure")),
+      () => Promise.resolve(new Response("provider body", { status: 503 })),
+      () => Promise.resolve(new Response("not-json", { status: 200 })),
+    ]
+  ) {
     await assertRejects(
       () => verifySupabaseAccessToken("token", { ...common, http }),
       AuthenticationUnavailable,
@@ -178,15 +191,16 @@ Deno.test("generates one advisory insight and writes only trusted metadata for a
   assertEquals(fake.calls.upsert, 1);
   assertEquals(fake.upserted?.evaluation.id, evaluationId);
   assertEquals(fake.upserted?.evaluation.userId, userId);
-  assertEquals(fake.upserted?.inputHash, await sha256Hex(sampleEvaluation.advisorInput));
+  assertEquals(
+    fake.upserted?.inputHash,
+    await sha256Hex(sampleEvaluation.advisorInput),
+  );
   assertEquals(fake.upserted?.generatedAt, "2026-08-31T01:00:00.000Z");
 });
 
 Deno.test("returns a neutral unavailable error without leaking provider detail", async () => {
   const fake = makeDependencies({
-    advisor: async () => {
-      throw new Error("internal provider response");
-    },
+    advisor: () => Promise.reject(new Error("internal provider response")),
   });
   const response = await createAiBusinessAdvisorHandler(fake.dependencies)(
     publicRequest(evaluationId),
@@ -199,36 +213,46 @@ Deno.test("returns a neutral unavailable error without leaking provider detail",
 });
 
 Deno.test("calls the exact fixed Responses endpoint, model, no-tools request, and strict schema", async () => {
-  let calledUrl = "";
-  let calledInit: RequestInit | null = null;
+  const callCapture: { url: string; init: RequestInit | null } = {
+    url: "",
+    init: null,
+  };
   const advisor = createOpenAiBusinessAdvisor({
     apiKey: "test-key",
-    http: async (url, init) => {
-      calledUrl = url;
-      calledInit = init;
-      return jsonResponse({
+    http: (url, init) => {
+      callCapture.url = url;
+      callCapture.init = init;
+      return Promise.resolve(jsonResponse({
         status: "completed",
         error: null,
         incomplete_details: null,
         output: [],
         output_text: JSON.stringify(sampleInsightRecord()),
-      });
+      }));
     },
   });
   const insight = await advisor.create(sampleEvaluation.advisorInput);
   assertEquals(insight.actions.length, 3);
-  assertEquals(calledUrl, openAiResponsesEndpoint);
-  assert(calledInit !== null);
-  const request = JSON.parse(calledInit.body as string) as Record<string, unknown>;
+  assertEquals(callCapture.url, openAiResponsesEndpoint);
+  const requestInit = callCapture.init;
+  assert(requestInit !== null);
+  assert(typeof requestInit.body === "string");
+  const request = JSON.parse(requestInit.body) as Record<string, unknown>;
   assertEquals(request.model, "gpt-5.6-sol");
   assertEquals(request.store, false);
   assertEquals(request.reasoning, { effort: "low" });
   assertEquals(request.tools, []);
   assertEquals(request.tool_choice, "none");
-  const format = (request.text as Record<string, unknown>).format as Record<string, unknown>;
+  const format = (request.text as Record<string, unknown>).format as Record<
+    string,
+    unknown
+  >;
   assertEquals(format.type, "json_schema");
   assertEquals(format.strict, true);
-  assertEquals((format.schema as Record<string, unknown>).additionalProperties, false);
+  assertEquals(
+    (format.schema as Record<string, unknown>).additionalProperties,
+    false,
+  );
   assert(!String(request.input).includes(userId));
   assert(!String(request.input).includes("Module 3 AI Insight Test Station"));
 });
@@ -237,13 +261,14 @@ Deno.test("handles timeout and non-200 OpenAI responses as neutral availability 
   const timeoutAdvisor = createOpenAiBusinessAdvisor({
     apiKey: "test-key",
     timeoutMs: 1,
-    http: async (_url, init) => await new Promise<Response>((_resolve, reject) => {
-      (init.signal as AbortSignal).addEventListener(
-        "abort",
-        () => reject(new DOMException("Aborted", "AbortError")),
-        { once: true },
-      );
-    }),
+    http: async (_url, init) =>
+      await new Promise<Response>((_resolve, reject) => {
+        (init.signal as AbortSignal).addEventListener(
+          "abort",
+          () => reject(new DOMException("Aborted", "AbortError")),
+          { once: true },
+        );
+      }),
   });
   await assertRejects(
     () => timeoutAdvisor.create(sampleEvaluation.advisorInput),
@@ -252,7 +277,8 @@ Deno.test("handles timeout and non-200 OpenAI responses as neutral availability 
 
   const rejectedAdvisor = createOpenAiBusinessAdvisor({
     apiKey: "test-key",
-    http: async () => new Response("private provider error", { status: 429 }),
+    http: () =>
+      Promise.resolve(new Response("private provider error", { status: 429 })),
   });
   await assertRejects(
     () => rejectedAdvisor.create(sampleEvaluation.advisorInput),
@@ -261,15 +287,41 @@ Deno.test("handles timeout and non-200 OpenAI responses as neutral availability 
 });
 
 Deno.test("rejects OpenAI refusal, incomplete, malformed, and oversized output", async () => {
-  for (const payload of [
-    { status: "incomplete", error: null, incomplete_details: { reason: "limit" }, output: [], output_text: "{}" },
-    { status: "completed", error: null, incomplete_details: null, output: [{ content: [{ type: "refusal" }] }], output_text: "{}" },
-    { status: "completed", error: null, incomplete_details: null, output: [], output_text: "not json" },
-    { status: "completed", error: null, incomplete_details: null, output: [], output_text: "x".repeat(32_769) },
-  ]) {
+  for (
+    const payload of [
+      {
+        status: "incomplete",
+        error: null,
+        incomplete_details: { reason: "limit" },
+        output: [],
+        output_text: "{}",
+      },
+      {
+        status: "completed",
+        error: null,
+        incomplete_details: null,
+        output: [{ content: [{ type: "refusal" }] }],
+        output_text: "{}",
+      },
+      {
+        status: "completed",
+        error: null,
+        incomplete_details: null,
+        output: [],
+        output_text: "not json",
+      },
+      {
+        status: "completed",
+        error: null,
+        incomplete_details: null,
+        output: [],
+        output_text: "x".repeat(32_769),
+      },
+    ]
+  ) {
     const advisor = createOpenAiBusinessAdvisor({
       apiKey: "test-key",
-      http: async () => jsonResponse(payload),
+      http: () => Promise.resolve(jsonResponse(payload)),
     });
     await assertRejects(
       () => advisor.create(sampleEvaluation.advisorInput),
@@ -281,14 +333,18 @@ Deno.test("rejects OpenAI refusal, incomplete, malformed, and oversized output",
 Deno.test("accepts only an exact bounded AI insight structure", () => {
   const insight = parseAiBusinessAdvisorInsight(sampleInsightRecord());
   assertEquals(insight.actions.length, 3);
-  assertThrowsInsight(() => parseAiBusinessAdvisorInsight({
-    ...sampleInsightRecord(),
-    extra: "no",
-  }));
-  assertThrowsInsight(() => parseAiBusinessAdvisorInsight({
-    ...sampleInsightRecord(),
-    actions: sampleInsightRecord().actions.slice(0, 2),
-  }));
+  assertThrowsInsight(() =>
+    parseAiBusinessAdvisorInsight({
+      ...sampleInsightRecord(),
+      extra: "no",
+    })
+  );
+  assertThrowsInsight(() =>
+    parseAiBusinessAdvisorInsight({
+      ...sampleInsightRecord(),
+      actions: sampleInsightRecord().actions.slice(0, 2),
+    })
+  );
 });
 
 const sampleEvaluation: StoredBusinessEvaluation = {
@@ -316,31 +372,70 @@ const sampleEvaluation: StoredBusinessEvaluation = {
     breakEvenMonths: 6.01,
     profitabilityScore: 88.5,
     profitabilityCategory: "Profitable",
-    recommendation: "The proposed fuel station shows strong financial potential.",
+    recommendation:
+      "The proposed fuel station shows strong financial potential.",
     explanation: "Deterministic calculation summary.",
   }),
 };
 
-function sampleInsightRecord(): Record<string, unknown> {
+type SampleInsightRecord = {
+  executive_summary: string;
+  drivers: Array<{
+    type: "strength" | "risk";
+    factor: string;
+    evidence: string;
+  }>;
+  actions: Array<{
+    priority: "high" | "medium" | "low";
+    action: string;
+    reason: string;
+  }>;
+  scenario_to_test: {
+    variable: string;
+    direction: string;
+    reason: string;
+  };
+  data_limitations: string[];
+  disclaimer: string;
+};
+
+function sampleInsightRecord(): SampleInsightRecord {
   return {
-    executive_summary: "The supplied assumptions indicate a positive monthly profit.",
+    executive_summary:
+      "The supplied assumptions indicate a positive monthly profit.",
     drivers: [{
       type: "strength",
       factor: "Fuel margin",
-      evidence: "The deterministic revenue and fuel-cost values show a positive margin.",
+      evidence:
+        "The deterministic revenue and fuel-cost values show a positive margin.",
     }],
     actions: [
-      { priority: "high", action: "Monitor demand", reason: "Daily customers are an input assumption." },
-      { priority: "medium", action: "Review costs", reason: "Fixed costs affect profit." },
-      { priority: "low", action: "Test sensitivity", reason: "Inputs can change." },
+      {
+        priority: "high",
+        action: "Monitor demand",
+        reason: "Daily customers are an input assumption.",
+      },
+      {
+        priority: "medium",
+        action: "Review costs",
+        reason: "Fixed costs affect profit.",
+      },
+      {
+        priority: "low",
+        action: "Test sensitivity",
+        reason: "Inputs can change.",
+      },
     ],
     scenario_to_test: {
       variable: "daily_customers",
       direction: "review",
       reason: "Demand is an assumption.",
     },
-    data_limitations: ["The advice uses only the supplied assumptions and deterministic results."],
-    disclaimer: "This advisory output is for decision-support only and does not guarantee financial outcomes.",
+    data_limitations: [
+      "The advice uses only the supplied assumptions and deterministic results.",
+    ],
+    disclaimer:
+      "This advisory output is for decision-support only and does not guarantee financial outcomes.",
   };
 }
 
@@ -370,22 +465,26 @@ function makeDependencies(overrides: {
     generatedAt: string;
   } | null = null;
   const dependencies: AiBusinessAdvisorHandlerDependencies = {
-    authenticate: overrides.authenticate ?? (async () => true),
+    authenticate: overrides.authenticate ?? (() => Promise.resolve(true)),
     evaluationReader: {
-      async read() {
+      read() {
         calls.read += 1;
-        return overrides.evaluation === undefined ? sampleEvaluation : overrides.evaluation;
+        return Promise.resolve(
+          overrides.evaluation === undefined
+            ? sampleEvaluation
+            : overrides.evaluation,
+        );
       },
     },
     insightStore: {
-      async get() {
+      get() {
         calls.cacheGet += 1;
-        return overrides.cached ?? null;
+        return Promise.resolve(overrides.cached ?? null);
       },
-      async upsert(value) {
+      upsert(value) {
         calls.upsert += 1;
         upserted = value;
-        return {
+        return Promise.resolve({
           evaluationId: value.evaluation.id,
           insight: value.insight,
           model: businessEvaluationAiAdvisorModel,
@@ -393,7 +492,7 @@ function makeDependencies(overrides: {
           inputHash: value.inputHash,
           sourceEvaluationUpdatedAt: value.evaluation.updatedAt,
           generatedAt: value.generatedAt,
-        };
+        });
       },
     },
     advisor: {
@@ -421,11 +520,14 @@ function publicRequest(
 ): Request {
   const headers = new Headers({ "content-type": "application/json" });
   if (authorization !== null) headers.set("authorization", authorization);
-  return new Request("https://example.invalid/functions/v1/business-evaluation-ai-insight", {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ evaluation_id: id }),
-  });
+  return new Request(
+    "https://example.invalid/functions/v1/business-evaluation-ai-insight",
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ evaluation_id: id }),
+    },
+  );
 }
 
 function jsonResponse(value: unknown): Response {
