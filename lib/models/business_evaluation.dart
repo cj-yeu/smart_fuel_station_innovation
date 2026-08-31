@@ -1,3 +1,5 @@
+import '../services/business_evaluation_service.dart';
+
 class BusinessEvaluation {
   final String id;
   final String userId;
@@ -57,9 +59,7 @@ class BusinessEvaluation {
     required this.updatedAt,
   });
 
-  factory BusinessEvaluation.fromMap(
-      Map<String, dynamic> map,
-      ) {
+  factory BusinessEvaluation.fromMap(Map<String, dynamic> map) {
     final breakEvenValue = map['break_even_months'];
 
     return BusinessEvaluation(
@@ -67,51 +67,83 @@ class BusinessEvaluation {
       userId: map['user_id'] as String,
       stationName: map['station_name'] as String,
       fuelPrice: (map['fuel_price'] as num).toDouble(),
-      fuelPurchaseCost:
-      (map['fuel_purchase_cost'] as num).toDouble(),
+      fuelPurchaseCost: (map['fuel_purchase_cost'] as num).toDouble(),
       dailyCustomers: map['daily_customers'] as int,
-      averageLitres:
-      (map['average_litres'] as num).toDouble(),
-      monthlyRental:
-      (map['monthly_rental'] as num).toDouble(),
-      monthlyStaffSalary:
-      (map['monthly_staff_salary'] as num).toDouble(),
-      monthlyUtilities:
-      (map['monthly_utilities'] as num).toDouble(),
-      monthlyMaintenance:
-      (map['monthly_maintenance'] as num).toDouble(),
-      monthlyOtherCost:
-      (map['monthly_other_cost'] as num).toDouble(),
-      initialInvestment:
-      (map['initial_investment'] as num).toDouble(),
-      monthlySalesVolume:
-      (map['monthly_sales_volume'] as num).toDouble(),
-      monthlyRevenue:
-      (map['monthly_revenue'] as num).toDouble(),
-      monthlyFuelCost:
-      (map['monthly_fuel_cost'] as num).toDouble(),
-      monthlyOperatingCost:
-      (map['monthly_operating_cost'] as num).toDouble(),
-      monthlyProfit:
-      (map['monthly_profit'] as num).toDouble(),
-      profitMargin:
-      (map['profit_margin'] as num).toDouble(),
+      averageLitres: (map['average_litres'] as num).toDouble(),
+      monthlyRental: (map['monthly_rental'] as num).toDouble(),
+      monthlyStaffSalary: (map['monthly_staff_salary'] as num).toDouble(),
+      monthlyUtilities: (map['monthly_utilities'] as num).toDouble(),
+      monthlyMaintenance: (map['monthly_maintenance'] as num).toDouble(),
+      monthlyOtherCost: (map['monthly_other_cost'] as num).toDouble(),
+      initialInvestment: (map['initial_investment'] as num).toDouble(),
+      monthlySalesVolume: (map['monthly_sales_volume'] as num).toDouble(),
+      monthlyRevenue: (map['monthly_revenue'] as num).toDouble(),
+      monthlyFuelCost: (map['monthly_fuel_cost'] as num).toDouble(),
+      monthlyOperatingCost: (map['monthly_operating_cost'] as num).toDouble(),
+      monthlyProfit: (map['monthly_profit'] as num).toDouble(),
+      profitMargin: (map['profit_margin'] as num).toDouble(),
       roi: (map['roi'] as num).toDouble(),
       breakEvenMonths: breakEvenValue == null
           ? null
           : (breakEvenValue as num).toDouble(),
-      profitabilityScore:
-      (map['profitability_score'] as num).toDouble(),
-      profitabilityCategory:
-      map['profitability_category'] as String,
+      profitabilityScore: (map['profitability_score'] as num).toDouble(),
+      profitabilityCategory: map['profitability_category'] as String,
       recommendation: map['recommendation'] as String,
       explanation: map['explanation'] as String,
-      createdAt: DateTime.parse(
-        map['created_at'] as String,
-      ),
-      updatedAt: DateTime.parse(
-        map['updated_at'] as String,
-      ),
+      createdAt: DateTime.parse(map['created_at'] as String),
+      updatedAt: DateTime.parse(map['updated_at'] as String),
+    );
+  }
+
+  /// Reconstructs the read-only result view from the exact values that were
+  /// persisted after a deterministic calculation. It never recalculates or
+  /// changes stored figures.
+  factory BusinessEvaluation.fromCalculatedValues({
+    required String id,
+    required String userId,
+    required String stationName,
+    required double fuelPrice,
+    required double fuelPurchaseCost,
+    required int dailyCustomers,
+    required double averageLitres,
+    required double monthlyRental,
+    required double monthlyStaffSalary,
+    required double monthlyUtilities,
+    required double monthlyMaintenance,
+    required double monthlyOtherCost,
+    required double initialInvestment,
+    required BusinessEvaluationResult result,
+    required DateTime createdAt,
+    required DateTime updatedAt,
+  }) {
+    return BusinessEvaluation(
+      id: id,
+      userId: userId,
+      stationName: stationName,
+      fuelPrice: fuelPrice,
+      fuelPurchaseCost: fuelPurchaseCost,
+      dailyCustomers: dailyCustomers,
+      averageLitres: averageLitres,
+      monthlyRental: monthlyRental,
+      monthlyStaffSalary: monthlyStaffSalary,
+      monthlyUtilities: monthlyUtilities,
+      monthlyMaintenance: monthlyMaintenance,
+      monthlyOtherCost: monthlyOtherCost,
+      initialInvestment: initialInvestment,
+      monthlySalesVolume: result.monthlySalesVolume,
+      monthlyRevenue: result.monthlyRevenue,
+      monthlyFuelCost: result.monthlyFuelCost,
+      monthlyOperatingCost: result.monthlyOperatingCost,
+      monthlyProfit: result.monthlyProfit,
+      profitMargin: result.profitMargin,
+      roi: result.roi,
+      breakEvenMonths: result.breakEvenMonths,
+      profitabilityScore: result.profitabilityScore,
+      profitabilityCategory: result.category,
+      recommendation: result.recommendation,
+      explanation: result.explanation,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
     );
   }
 }

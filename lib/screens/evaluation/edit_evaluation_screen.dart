@@ -222,7 +222,7 @@ class _EditEvaluationScreenState extends State<EditEvaluationScreen> {
         initialInvestment: investment,
       );
 
-      await Supabase.instance.client
+      final savedRow = await Supabase.instance.client
           .from('business_evaluations')
           .update({
             'station_name': stationName,
@@ -250,7 +250,33 @@ class _EditEvaluationScreenState extends State<EditEvaluationScreen> {
             'explanation': result.explanation,
           })
           .eq('id', widget.evaluation.id)
-          .eq('user_id', user.id);
+          .eq('user_id', user.id)
+          .select('id,updated_at')
+          .single();
+
+      final savedId = savedRow['id'];
+      final savedUpdatedAt = savedRow['updated_at'];
+      if (savedId is! String || savedUpdatedAt is! String) {
+        throw const FormatException('Saved evaluation response is invalid.');
+      }
+      final savedEvaluation = BusinessEvaluation.fromCalculatedValues(
+        id: savedId,
+        userId: user.id,
+        stationName: stationName,
+        fuelPrice: fuelPrice,
+        fuelPurchaseCost: fuelCost,
+        dailyCustomers: dailyCustomers,
+        averageLitres: averageLitres,
+        monthlyRental: rental,
+        monthlyStaffSalary: salary,
+        monthlyUtilities: utilities,
+        monthlyMaintenance: maintenance,
+        monthlyOtherCost: otherCost,
+        initialInvestment: investment,
+        result: result,
+        createdAt: widget.evaluation.createdAt,
+        updatedAt: DateTime.parse(savedUpdatedAt),
+      );
 
       if (!mounted) return;
 
@@ -258,7 +284,7 @@ class _EditEvaluationScreenState extends State<EditEvaluationScreen> {
         context,
         MaterialPageRoute(
           builder: (context) =>
-              EvaluationResultScreen(stationName: stationName, result: result),
+              EvaluationResultScreen.fromEvaluation(savedEvaluation),
         ),
       );
 

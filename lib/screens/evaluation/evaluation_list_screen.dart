@@ -1,5 +1,6 @@
 import 'edit_evaluation_screen.dart';
 import 'add_evaluation_screen.dart';
+import 'evaluation_result_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -305,10 +306,28 @@ class _EvaluationListScreenState extends State<EvaluationListScreen> {
                 ),
               ),
               isThreeLine: true,
-              trailing: IconButton(
-                tooltip: 'Delete Evaluation',
-                onPressed: () => deleteEvaluation(evaluation),
-                icon: const Icon(Icons.delete_outline, color: Colors.red),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    tooltip: 'View Results / AI',
+                    onPressed: () {
+                      Navigator.push<void>(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) =>
+                              EvaluationResultScreen.fromEvaluation(evaluation),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.insights_outlined),
+                  ),
+                  IconButton(
+                    tooltip: 'Delete Evaluation',
+                    onPressed: () => deleteEvaluation(evaluation),
+                    icon: const Icon(Icons.delete_outline, color: Colors.red),
+                  ),
+                ],
               ),
             ),
           );
