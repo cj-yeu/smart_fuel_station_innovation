@@ -1,0 +1,2 @@
+.gitattributes text eol=lf
+supabase/functions/business-evaluation-ai-insight/*.ts text eol=lf
