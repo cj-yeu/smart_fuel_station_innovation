@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../models/business_evaluation.dart';
 import '../../models/official_fuel_price.dart';
 import '../../models/station_assessment.dart';
 import '../../services/business_evaluation_service.dart';
@@ -316,32 +317,61 @@ class _AddEvaluationScreenState extends State<AddEvaluationScreen> {
         initialInvestment: validInvestment,
       );
 
-      await Supabase.instance.client.from('business_evaluations').insert({
-        'user_id': user.id,
-        'station_name': stationName,
-        'fuel_price': validFuelPrice,
-        'fuel_purchase_cost': validFuelCost,
-        'daily_customers': validDailyCustomers,
-        'average_litres': validAverageLitres,
-        'monthly_rental': validRental,
-        'monthly_staff_salary': validSalary,
-        'monthly_utilities': validUtilities,
-        'monthly_maintenance': validMaintenance,
-        'monthly_other_cost': validOtherCost,
-        'initial_investment': validInvestment,
-        'monthly_sales_volume': result.monthlySalesVolume,
-        'monthly_revenue': result.monthlyRevenue,
-        'monthly_fuel_cost': result.monthlyFuelCost,
-        'monthly_operating_cost': result.monthlyOperatingCost,
-        'monthly_profit': result.monthlyProfit,
-        'profit_margin': result.profitMargin,
-        'roi': result.roi,
-        'break_even_months': result.breakEvenMonths,
-        'profitability_score': result.profitabilityScore,
-        'profitability_category': result.category,
-        'recommendation': result.recommendation,
-        'explanation': result.explanation,
-      });
+      final savedRow = await Supabase.instance.client
+          .from('business_evaluations')
+          .insert({
+            'user_id': user.id,
+            'station_name': stationName,
+            'fuel_price': validFuelPrice,
+            'fuel_purchase_cost': validFuelCost,
+            'daily_customers': validDailyCustomers,
+            'average_litres': validAverageLitres,
+            'monthly_rental': validRental,
+            'monthly_staff_salary': validSalary,
+            'monthly_utilities': validUtilities,
+            'monthly_maintenance': validMaintenance,
+            'monthly_other_cost': validOtherCost,
+            'initial_investment': validInvestment,
+            'monthly_sales_volume': result.monthlySalesVolume,
+            'monthly_revenue': result.monthlyRevenue,
+            'monthly_fuel_cost': result.monthlyFuelCost,
+            'monthly_operating_cost': result.monthlyOperatingCost,
+            'monthly_profit': result.monthlyProfit,
+            'profit_margin': result.profitMargin,
+            'roi': result.roi,
+            'break_even_months': result.breakEvenMonths,
+            'profitability_score': result.profitabilityScore,
+            'profitability_category': result.category,
+            'recommendation': result.recommendation,
+            'explanation': result.explanation,
+          })
+          .select('id,updated_at')
+          .single();
+
+      final savedId = savedRow['id'];
+      final savedUpdatedAt = savedRow['updated_at'];
+      if (savedId is! String || savedUpdatedAt is! String) {
+        throw const FormatException('Saved evaluation response is invalid.');
+      }
+      final savedTimestamp = DateTime.parse(savedUpdatedAt);
+      final savedEvaluation = BusinessEvaluation.fromCalculatedValues(
+        id: savedId,
+        userId: user.id,
+        stationName: stationName,
+        fuelPrice: validFuelPrice,
+        fuelPurchaseCost: validFuelCost,
+        dailyCustomers: validDailyCustomers,
+        averageLitres: validAverageLitres,
+        monthlyRental: validRental,
+        monthlyStaffSalary: validSalary,
+        monthlyUtilities: validUtilities,
+        monthlyMaintenance: validMaintenance,
+        monthlyOtherCost: validOtherCost,
+        initialInvestment: validInvestment,
+        result: result,
+        createdAt: savedTimestamp,
+        updatedAt: savedTimestamp,
+      );
 
       if (!mounted) return;
 
@@ -349,7 +379,7 @@ class _AddEvaluationScreenState extends State<AddEvaluationScreen> {
         context,
         MaterialPageRoute(
           builder: (context) =>
-              EvaluationResultScreen(stationName: stationName, result: result),
+              EvaluationResultScreen.fromEvaluation(savedEvaluation),
         ),
       );
 
