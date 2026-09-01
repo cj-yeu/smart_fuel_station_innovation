@@ -97,6 +97,32 @@ export class AiBusinessAdvisorUnavailable extends Error {
   }
 }
 
+export type OpenAiBusinessAdvisorProviderFailureReason =
+  | "provider_http_error"
+  | "provider_timeout"
+  | "provider_incomplete"
+  | "provider_refusal"
+  | "provider_response_too_large"
+  | "provider_response_invalid_json"
+  | "provider_output_missing"
+  | "provider_insight_invalid";
+
+export class OpenAiBusinessAdvisorProviderFailure
+  extends AiBusinessAdvisorUnavailable {
+  readonly reason: OpenAiBusinessAdvisorProviderFailureReason;
+  readonly httpStatus: number | undefined;
+
+  constructor(
+    reason: OpenAiBusinessAdvisorProviderFailureReason,
+    httpStatus?: number,
+  ) {
+    super();
+    this.name = "OpenAiBusinessAdvisorProviderFailure";
+    this.reason = reason;
+    this.httpStatus = httpStatus;
+  }
+}
+
 export function parseAiBusinessAdvisorRequest(
   value: unknown,
 ): AiBusinessAdvisorRequest {
@@ -355,27 +381,28 @@ export function createOpenAiBusinessAdvisor(dependencies: {
           body: JSON.stringify(buildOpenAiBusinessAdvisorRequest(input)),
           signal: controller.signal,
         });
-        if (!response.ok) throw new AiBusinessAdvisorUnavailable();
-        const text = await readBoundedUtf8Body(
-          response.body,
-          response.headers.get("content-length"),
-          maximumOpenAiResponseBytes,
-          () => new AiBusinessAdvisorUnavailable(),
-          controller.signal,
-        );
+        if (!response.ok) {
+          throw new OpenAiBusinessAdvisorProviderFailure(
+            "provider_http_error",
+            response.status,
+          );
+        }
+        const text = await readOpenAiResponseBody(response, controller);
         let payload: unknown;
         try {
           payload = JSON.parse(text);
         } catch (_) {
-          throw new AiBusinessAdvisorUnavailable();
+          throw new OpenAiBusinessAdvisorProviderFailure(
+            "provider_response_invalid_json",
+          );
         }
         return parseOpenAiBusinessAdvisorResponse(payload);
       } catch (error) {
-        if (error instanceof AiBusinessAdvisorUnavailable) throw error;
-        if (error instanceof InvalidAiBusinessAdvisorInsight) {
-          throw new AiBusinessAdvisorUnavailable();
+        if (error instanceof OpenAiBusinessAdvisorProviderFailure) throw error;
+        if (controller.signal.aborted) {
+          throw new OpenAiBusinessAdvisorProviderFailure("provider_timeout");
         }
-        throw new AiBusinessAdvisorUnavailable();
+        throw new OpenAiBusinessAdvisorProviderFailure("provider_http_error");
       } finally {
         clearTimeout(timeout);
       }
@@ -390,22 +417,139 @@ export function parseOpenAiBusinessAdvisorResponse(
     throw new InvalidAiBusinessAdvisorInsight();
   }
   const response = value as Record<string, unknown>;
+  const outputText = completedOpenAiOutputText(response);
   if (
-    response.status !== "completed" ||
-    response.error !== null ||
-    response.incomplete_details !== null ||
-    containsRefusal(response.output) ||
-    typeof response.output_text !== "string" ||
-    new TextEncoder().encode(response.output_text).byteLength >
-      maximumOpenAiResponseBytes
+    new TextEncoder().encode(outputText).byteLength > maximumOpenAiResponseBytes
   ) {
-    throw new InvalidAiBusinessAdvisorInsight();
+    throw new OpenAiBusinessAdvisorProviderFailure(
+      "provider_response_too_large",
+    );
   }
 
   try {
-    return parseAiBusinessAdvisorInsight(JSON.parse(response.output_text));
+    return parseAiBusinessAdvisorInsight(JSON.parse(outputText));
   } catch (_) {
-    throw new InvalidAiBusinessAdvisorInsight();
+    throw new OpenAiBusinessAdvisorProviderFailure("provider_insight_invalid");
+  }
+}
+
+function completedOpenAiOutputText(response: Record<string, unknown>): string {
+  if (response.status === "incomplete") {
+    throw new OpenAiBusinessAdvisorProviderFailure("provider_incomplete");
+  }
+  if (
+    response.status !== "completed" || response.error !== null ||
+    response.incomplete_details !== null || !Array.isArray(response.output)
+  ) {
+    throw new OpenAiBusinessAdvisorProviderFailure("provider_output_missing");
+  }
+
+  let outputText: string | null = null;
+  let completedAssistantMessageFound = false;
+  for (const item of response.output) {
+    if (item === null || typeof item !== "object" || Array.isArray(item)) {
+      continue;
+    }
+    const outputItem = item as Record<string, unknown>;
+    if (outputItem.type !== "message" || outputItem.role !== "assistant") {
+      continue;
+    }
+    if (
+      outputItem.status !== "completed" || !Array.isArray(outputItem.content)
+    ) {
+      throw new OpenAiBusinessAdvisorProviderFailure("provider_output_missing");
+    }
+    completedAssistantMessageFound = true;
+    for (const part of outputItem.content) {
+      if (part === null || typeof part !== "object" || Array.isArray(part)) {
+        continue;
+      }
+      const contentPart = part as Record<string, unknown>;
+      if (contentPart.type === "refusal") {
+        throw new OpenAiBusinessAdvisorProviderFailure("provider_refusal");
+      }
+      if (contentPart.type !== "output_text") continue;
+      if (typeof contentPart.text !== "string" || outputText !== null) {
+        throw new OpenAiBusinessAdvisorProviderFailure(
+          "provider_output_missing",
+        );
+      }
+      outputText = contentPart.text;
+    }
+  }
+
+  if (!completedAssistantMessageFound || outputText === null) {
+    throw new OpenAiBusinessAdvisorProviderFailure("provider_output_missing");
+  }
+  return outputText;
+}
+
+async function readOpenAiResponseBody(
+  response: Response,
+  controller: AbortController,
+): Promise<string> {
+  const body = response.body;
+  if (body === null) {
+    throw new OpenAiBusinessAdvisorProviderFailure("provider_output_missing");
+  }
+  if (
+    declaredLengthExceedsLimit(
+      response.headers.get("content-length"),
+      maximumOpenAiResponseBytes,
+    )
+  ) {
+    await body.cancel().catch(() => undefined);
+    throw new OpenAiBusinessAdvisorProviderFailure(
+      "provider_response_too_large",
+    );
+  }
+
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  let cancellationStarted = false;
+  const cancelReader = async () => {
+    if (cancellationStarted) return;
+    cancellationStarted = true;
+    await reader.cancel().catch(() => undefined);
+  };
+  try {
+    while (true) {
+      const next = await readAbortableChunk(reader, controller.signal);
+      if (next.done) break;
+      totalBytes += next.value.byteLength;
+      if (totalBytes > maximumOpenAiResponseBytes) {
+        throw new OpenAiBusinessAdvisorProviderFailure(
+          "provider_response_too_large",
+        );
+      }
+      chunks.push(next.value);
+    }
+  } catch (error) {
+    await cancelReader();
+    if (error instanceof OpenAiBusinessAdvisorProviderFailure) throw error;
+    if (controller.signal.aborted) {
+      throw new OpenAiBusinessAdvisorProviderFailure("provider_timeout");
+    }
+    throw new OpenAiBusinessAdvisorProviderFailure(
+      "provider_response_invalid_json",
+    );
+  } finally {
+    reader.releaseLock();
+  }
+
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch (_) {
+    throw new OpenAiBusinessAdvisorProviderFailure(
+      "provider_response_invalid_json",
+    );
   }
 }
 
@@ -608,21 +752,6 @@ function exactObject(value: unknown, keys: string[]): Record<string, unknown> {
     throw new InvalidAiBusinessAdvisorInsight();
   }
   return record;
-}
-
-function containsRefusal(value: unknown): boolean {
-  if (!Array.isArray(value)) return true;
-  return value.some((item) => {
-    if (item === null || typeof item !== "object" || Array.isArray(item)) {
-      return true;
-    }
-    const content = (item as Record<string, unknown>).content;
-    return Array.isArray(content) &&
-      content.some((part) =>
-        part !== null && typeof part === "object" && !Array.isArray(part) &&
-        (part as Record<string, unknown>).type === "refusal"
-      );
-  });
 }
 
 function declaredLengthExceedsLimit(
