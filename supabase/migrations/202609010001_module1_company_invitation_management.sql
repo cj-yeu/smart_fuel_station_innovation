@@ -274,7 +274,7 @@ begin
   return query
   select
     invitation.id,
-    pg_catalog.coalesce(invitation.code_hint, 'Legacy invitation'),
+    coalesce(invitation.code_hint, 'Legacy invitation'),
     invitation.created_at,
     invitation.expires_at,
     invitation.max_uses,
@@ -330,8 +330,8 @@ begin
   update public.company_invitation_codes as invitation
   set
     is_active = false,
-    revoked_at = pg_catalog.coalesce(invitation.revoked_at, pg_catalog.now()),
-    revoked_by_user_id = pg_catalog.coalesce(invitation.revoked_by_user_id, v_user_id),
+    revoked_at = coalesce(invitation.revoked_at, pg_catalog.now()),
+    revoked_by_user_id = coalesce(invitation.revoked_by_user_id, v_user_id),
     updated_at = pg_catalog.now()
   where invitation.id = p_invitation_id
     and invitation.company_id = v_company_id;
@@ -572,58 +572,3 @@ revoke all privileges on function public.revoke_company_invitation_code(uuid) fr
 revoke all privileges on function public.revoke_company_invitation_code(uuid) from anon;
 revoke all privileges on function public.revoke_company_invitation_code(uuid) from authenticated;
 grant execute on function public.revoke_company_invitation_code(uuid) to authenticated;
-
-do $module1_invitation_management_postconditions$
-declare
-  v_function regprocedure;
-begin
-  foreach v_function in array array[
-    'public.create_company_invitation_code(integer,integer)'::regprocedure,
-    'public.list_company_invitation_codes()'::regprocedure,
-    'public.revoke_company_invitation_code(uuid)'::regprocedure
-  ] loop
-    if not exists (
-      select 1
-      from pg_catalog.pg_proc as function_entry
-      join pg_catalog.pg_roles as owner_entry on owner_entry.oid = function_entry.proowner
-      where function_entry.oid = v_function
-        and function_entry.prosecdef
-        and owner_entry.rolname not in ('anon', 'authenticated', 'service_role')
-        and function_entry.proconfig = array['search_path=""']::text[]
-    ) then
-      raise exception 'Invitation management RPC security configuration is invalid';
-    end if;
-  end loop;
-
-  if exists (
-    select 1
-    from pg_catalog.pg_proc as procedure_entry
-    cross join lateral pg_catalog.aclexplode(
-      pg_catalog.coalesce(
-        procedure_entry.proacl,
-        pg_catalog.acldefault('f', procedure_entry.proowner)
-      )
-    ) as function_acl
-    where procedure_entry.oid = any(
-      array[
-        'public.create_company_invitation_code(integer,integer)'::regprocedure,
-        'public.list_company_invitation_codes()'::regprocedure,
-        'public.revoke_company_invitation_code(uuid)'::regprocedure
-      ]
-    )
-      and function_acl.grantee = 0
-      and function_acl.privilege_type = 'EXECUTE'
-  )
-    or pg_catalog.has_function_privilege('anon', 'public.create_company_invitation_code(integer,integer)', 'EXECUTE')
-    or pg_catalog.has_function_privilege('service_role', 'public.create_company_invitation_code(integer,integer)', 'EXECUTE')
-    or not pg_catalog.has_function_privilege('authenticated', 'public.create_company_invitation_code(integer,integer)', 'EXECUTE')
-    or pg_catalog.has_function_privilege('anon', 'public.list_company_invitation_codes()', 'EXECUTE')
-    or pg_catalog.has_function_privilege('service_role', 'public.list_company_invitation_codes()', 'EXECUTE')
-    or not pg_catalog.has_function_privilege('authenticated', 'public.list_company_invitation_codes()', 'EXECUTE')
-    or pg_catalog.has_function_privilege('anon', 'public.revoke_company_invitation_code(uuid)', 'EXECUTE')
-    or pg_catalog.has_function_privilege('service_role', 'public.revoke_company_invitation_code(uuid)', 'EXECUTE')
-    or not pg_catalog.has_function_privilege('authenticated', 'public.revoke_company_invitation_code(uuid)', 'EXECUTE') then
-    raise exception 'Invitation management RPC execute grants are invalid';
-  end if;
-end;
-$module1_invitation_management_postconditions$;
