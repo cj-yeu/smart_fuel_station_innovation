@@ -68,6 +68,23 @@ export type AiBusinessAdvisorPublicResponse = {
   source_evaluation_updated_at: string;
 };
 
+export const aiBusinessAdvisorRuntimeFailureEvent =
+  "ai_advisor_runtime_failure";
+
+export type AiBusinessAdvisorRuntimeFailureStage =
+  | "auth_unavailable"
+  | "evaluation_read_failed"
+  | "insight_read_failed"
+  | "provider_generation_failed"
+  | "insight_upsert_failed";
+
+export type AiBusinessAdvisorRuntimeFailureLogEvent = {
+  event: typeof aiBusinessAdvisorRuntimeFailureEvent;
+  stage: AiBusinessAdvisorRuntimeFailureStage;
+  elapsed_ms: number;
+  request_id: string;
+};
+
 export interface EvaluationReader {
   read(
     evaluationId: string,
@@ -97,12 +114,24 @@ export interface AiBusinessAdvisorHandlerDependencies {
   insightStore: AiInsightStore;
   advisor: OpenAiBusinessAdvisor;
   now?: () => Date;
+  requestId?: () => string;
+  nowMilliseconds?: () => number;
+  logger?: (event: AiBusinessAdvisorRuntimeFailureLogEvent) => void;
 }
 
 export class AuthenticationUnavailable extends Error {
   constructor() {
     super("Supabase authentication is unavailable.");
     this.name = "AuthenticationUnavailable";
+  }
+}
+
+class AiBusinessAdvisorRuntimeFailure extends AiBusinessAdvisorUnavailable {
+  readonly stage: AiBusinessAdvisorRuntimeFailureStage;
+
+  constructor(stage: AiBusinessAdvisorRuntimeFailureStage) {
+    super();
+    this.stage = stage;
   }
 }
 
@@ -156,23 +185,53 @@ export function createAiBusinessAdvisorHandler(
   dependencies: AiBusinessAdvisorHandlerDependencies,
 ): (request: Request) => Promise<Response> {
   return async (request) => {
+    const requestId = (dependencies.requestId ?? (() => crypto.randomUUID()))();
+    const nowMilliseconds = dependencies.nowMilliseconds ?? (() => Date.now());
+    const startedAtMilliseconds = nowMilliseconds();
+    const response = (
+      value: unknown,
+      status = 200,
+      headers: Record<string, string> = {},
+    ) =>
+      jsonResponse(value, status, {
+        ...headers,
+        "x-ai-advisor-request-id": requestId,
+      });
+    const logRuntimeFailure = (stage: AiBusinessAdvisorRuntimeFailureStage) => {
+      const event: AiBusinessAdvisorRuntimeFailureLogEvent = {
+        event: aiBusinessAdvisorRuntimeFailureEvent,
+        stage,
+        elapsed_ms: Math.max(
+          0,
+          Math.round(nowMilliseconds() - startedAtMilliseconds),
+        ),
+        request_id: requestId,
+      };
+      try {
+        (dependencies.logger ?? defaultRuntimeLogger)(event);
+      } catch (_) {
+        // Logging must not replace a neutral public response.
+      }
+    };
+
     if (request.method !== "POST") {
-      return jsonResponse({ error: "method_not_allowed" }, 405, {
+      return response({ error: "method_not_allowed" }, 405, {
         Allow: "POST",
       });
     }
 
     const accessToken = parseBearerToken(request.headers.get("authorization"));
     if (accessToken === null) {
-      return jsonResponse({ error: "unauthorized" }, 401);
+      return response({ error: "unauthorized" }, 401);
     }
 
     try {
       if (!(await dependencies.authenticate(accessToken))) {
-        return jsonResponse({ error: "unauthorized" }, 401);
+        return response({ error: "unauthorized" }, 401);
       }
     } catch (_) {
-      return jsonResponse({ error: "authentication_unavailable" }, 503);
+      logRuntimeFailure("auth_unavailable");
+      return response({ error: "authentication_unavailable" }, 503);
     }
 
     try {
@@ -184,15 +243,18 @@ export function createAiBusinessAdvisorHandler(
         accessToken,
         dependencies,
       );
-      return jsonResponse(result);
+      return response(result);
     } catch (error) {
       if (error instanceof InvalidAiBusinessAdvisorRequest) {
-        return jsonResponse({ error: "invalid_request" }, 400);
+        return response({ error: "invalid_request" }, 400);
       }
       if (error instanceof EvaluationNotFound) {
-        return jsonResponse({ error: "evaluation_not_found" }, 404);
+        return response({ error: "evaluation_not_found" }, 404);
       }
-      return jsonResponse({ error: "advisor_unavailable" }, 503);
+      if (error instanceof AiBusinessAdvisorRuntimeFailure) {
+        logRuntimeFailure(error.stage);
+      }
+      return response({ error: "advisor_unavailable" }, 503);
     }
   };
 }
@@ -209,7 +271,7 @@ export async function loadAiBusinessAdvisorInsight(
       accessToken,
     );
   } catch (_) {
-    throw new AiBusinessAdvisorUnavailable();
+    throw new AiBusinessAdvisorRuntimeFailure("evaluation_read_failed");
   }
   if (evaluation === null) throw new EvaluationNotFound();
 
@@ -218,7 +280,7 @@ export async function loadAiBusinessAdvisorInsight(
   try {
     existing = await dependencies.insightStore.get(evaluation.id);
   } catch (_) {
-    throw new AiBusinessAdvisorUnavailable();
+    throw new AiBusinessAdvisorRuntimeFailure("insight_read_failed");
   }
   if (
     existing !== null &&
@@ -233,7 +295,7 @@ export async function loadAiBusinessAdvisorInsight(
   try {
     insight = await dependencies.advisor.create(evaluation.advisorInput);
   } catch (_) {
-    throw new AiBusinessAdvisorUnavailable();
+    throw new AiBusinessAdvisorRuntimeFailure("provider_generation_failed");
   }
 
   try {
@@ -245,7 +307,7 @@ export async function loadAiBusinessAdvisorInsight(
     });
     return publicResponse("generated", stored);
   } catch (_) {
-    throw new AiBusinessAdvisorUnavailable();
+    throw new AiBusinessAdvisorRuntimeFailure("insight_upsert_failed");
   }
 }
 
@@ -394,4 +456,10 @@ function jsonResponse(
     status,
     headers: { "content-type": "application/json", ...headers },
   });
+}
+
+function defaultRuntimeLogger(
+  event: AiBusinessAdvisorRuntimeFailureLogEvent,
+): void {
+  console.log(JSON.stringify(event));
 }

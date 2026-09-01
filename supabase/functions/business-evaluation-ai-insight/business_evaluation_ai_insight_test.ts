@@ -13,6 +13,8 @@ import {
 } from "./business_evaluation_ai_insight.ts";
 import {
   type AiBusinessAdvisorHandlerDependencies,
+  type AiBusinessAdvisorRuntimeFailureLogEvent,
+  type AiBusinessAdvisorRuntimeFailureStage,
   AuthenticationUnavailable,
   createAiBusinessAdvisorHandler,
   type StoredBusinessEvaluation,
@@ -124,6 +126,127 @@ Deno.test("maps Auth transport failure to neutral 503 without downstream calls",
   assertEquals(fake.calls.read, 0);
   assertEquals(fake.calls.cacheGet, 0);
   assertEquals(fake.calls.advisor, 0);
+});
+
+Deno.test("emits only safe fixed diagnostic events for each unavailable stage", async () => {
+  const sensitiveValues = [
+    "Bearer token-that-must-not-be-logged",
+    evaluationId,
+    "private@example.test",
+    "5.9876,116.1234",
+    "private provider response body",
+    "1548750.00",
+  ];
+  const sensitiveError = new Error(sensitiveValues.join(" | "));
+  const scenarios: Array<{
+    stage: AiBusinessAdvisorRuntimeFailureStage;
+    publicBody: Record<string, string>;
+    overrides: TestDependencyOverrides;
+  }> = [
+    {
+      stage: "auth_unavailable",
+      publicBody: { error: "authentication_unavailable" },
+      overrides: {
+        authenticate: () => Promise.reject(sensitiveError),
+      },
+    },
+    {
+      stage: "evaluation_read_failed",
+      publicBody: { error: "advisor_unavailable" },
+      overrides: {
+        readEvaluation: () => Promise.reject(sensitiveError),
+      },
+    },
+    {
+      stage: "insight_read_failed",
+      publicBody: { error: "advisor_unavailable" },
+      overrides: {
+        readInsight: () => Promise.reject(sensitiveError),
+      },
+    },
+    {
+      stage: "provider_generation_failed",
+      publicBody: { error: "advisor_unavailable" },
+      overrides: {
+        advisor: () => Promise.reject(sensitiveError),
+      },
+    },
+    {
+      stage: "insight_upsert_failed",
+      publicBody: { error: "advisor_unavailable" },
+      overrides: {
+        upsertInsight: () => Promise.reject(sensitiveError),
+      },
+    },
+  ];
+
+  for (const scenario of scenarios) {
+    const events: AiBusinessAdvisorRuntimeFailureLogEvent[] = [];
+    const requestId = `request-${scenario.stage}`;
+    const timestamps = [100, 125];
+    const fake = makeDependencies({
+      ...scenario.overrides,
+      requestId: () => requestId,
+      nowMilliseconds: () => timestamps.shift() ?? 125,
+      logger: (event) => {
+        events.push(event);
+      },
+    });
+    const response = await createAiBusinessAdvisorHandler(fake.dependencies)(
+      publicRequest(evaluationId, sensitiveValues[0]),
+    );
+
+    assertEquals(response.status, 503);
+    assertEquals(await response.json(), scenario.publicBody);
+    assertEquals(response.headers.get("x-ai-advisor-request-id"), requestId);
+    assertEquals(events, [{
+      event: "ai_advisor_runtime_failure",
+      stage: scenario.stage,
+      elapsed_ms: 25,
+      request_id: requestId,
+    }]);
+    const serializedEvents = JSON.stringify(events);
+    for (const sensitiveValue of sensitiveValues) {
+      assert(!serializedEvents.includes(sensitiveValue));
+    }
+  }
+});
+
+Deno.test("does not emit failure events for generated or cached responses", async () => {
+  const generatedEvents: AiBusinessAdvisorRuntimeFailureLogEvent[] = [];
+  const generated = makeDependencies({
+    requestId: () => "generated-request",
+    logger: (event) => {
+      generatedEvents.push(event);
+    },
+  });
+  const generatedResponse = await createAiBusinessAdvisorHandler(
+    generated.dependencies,
+  )(publicRequest(evaluationId));
+  assertEquals(generatedResponse.status, 200);
+  assertEquals(
+    generatedResponse.headers.get("x-ai-advisor-request-id"),
+    "generated-request",
+  );
+  assertEquals(generatedEvents, []);
+
+  const cachedEvents: AiBusinessAdvisorRuntimeFailureLogEvent[] = [];
+  const cached = makeDependencies({
+    cached: storedInsight(await sha256Hex(sampleEvaluation.advisorInput)),
+    requestId: () => "cached-request",
+    logger: (event) => {
+      cachedEvents.push(event);
+    },
+  });
+  const cachedResponse = await createAiBusinessAdvisorHandler(
+    cached.dependencies,
+  )(publicRequest(evaluationId));
+  assertEquals(cachedResponse.status, 200);
+  assertEquals(
+    cachedResponse.headers.get("x-ai-advisor-request-id"),
+    "cached-request",
+  );
+  assertEquals(cachedEvents, []);
 });
 
 Deno.test("classifies Auth invalid-token, network, 5xx, and invalid JSON responses safely", async () => {
@@ -451,12 +574,20 @@ function storedInsight(inputHash: string): StoredBusinessEvaluationAiInsight {
   };
 }
 
-function makeDependencies(overrides: {
+type TestDependencyOverrides = {
   authenticate?: () => Promise<boolean>;
   evaluation?: StoredBusinessEvaluation | null;
   cached?: StoredBusinessEvaluationAiInsight | null;
+  readEvaluation?: () => Promise<StoredBusinessEvaluation | null>;
+  readInsight?: () => Promise<StoredBusinessEvaluationAiInsight | null>;
+  upsertInsight?: () => Promise<StoredBusinessEvaluationAiInsight>;
   advisor?: () => Promise<ReturnType<typeof parseAiBusinessAdvisorInsight>>;
-} = {}) {
+  requestId?: () => string;
+  nowMilliseconds?: () => number;
+  logger?: (event: AiBusinessAdvisorRuntimeFailureLogEvent) => void;
+};
+
+function makeDependencies(overrides: TestDependencyOverrides = {}) {
   const calls = { read: 0, cacheGet: 0, advisor: 0, upsert: 0 };
   let upserted: {
     evaluation: StoredBusinessEvaluation;
@@ -469,6 +600,9 @@ function makeDependencies(overrides: {
     evaluationReader: {
       read() {
         calls.read += 1;
+        if (overrides.readEvaluation !== undefined) {
+          return overrides.readEvaluation();
+        }
         return Promise.resolve(
           overrides.evaluation === undefined
             ? sampleEvaluation
@@ -479,10 +613,16 @@ function makeDependencies(overrides: {
     insightStore: {
       get() {
         calls.cacheGet += 1;
+        if (overrides.readInsight !== undefined) {
+          return overrides.readInsight();
+        }
         return Promise.resolve(overrides.cached ?? null);
       },
       upsert(value) {
         calls.upsert += 1;
+        if (overrides.upsertInsight !== undefined) {
+          return overrides.upsertInsight();
+        }
         upserted = value;
         return Promise.resolve({
           evaluationId: value.evaluation.id,
@@ -504,6 +644,9 @@ function makeDependencies(overrides: {
       },
     },
     now: () => new Date("2026-08-31T01:00:00.000Z"),
+    requestId: overrides.requestId,
+    nowMilliseconds: overrides.nowMilliseconds,
+    logger: overrides.logger ?? (() => {}),
   };
   return {
     dependencies,
