@@ -1,11 +1,13 @@
 import {
-  AiBusinessAdvisorUnavailable,
   businessEvaluationAiAdvisorModel,
   businessEvaluationAiAdvisorPromptVersion,
   createCanonicalBusinessEvaluationAdvisorInput,
   createOpenAiBusinessAdvisor,
   InvalidAiBusinessAdvisorInsight,
   InvalidAiBusinessAdvisorRequest,
+  maximumOpenAiResponseBytes,
+  OpenAiBusinessAdvisorProviderFailure,
+  type OpenAiBusinessAdvisorProviderFailureReason,
   openAiResponsesEndpoint,
   parseAiBusinessAdvisorInsight,
   parseAiBusinessAdvisorRequestJson,
@@ -53,6 +55,25 @@ async function assertRejects(
     return;
   }
   throw new Error(`Expected ${type.name}.`);
+}
+
+async function assertRejectsProvider(
+  callback: () => Promise<unknown>,
+  reason: OpenAiBusinessAdvisorProviderFailureReason,
+  httpStatus?: number,
+): Promise<void> {
+  try {
+    await callback();
+  } catch (error) {
+    assert(
+      error instanceof OpenAiBusinessAdvisorProviderFailure,
+      "Expected OpenAiBusinessAdvisorProviderFailure.",
+    );
+    assertEquals(error.reason, reason);
+    assertEquals(error.httpStatus, httpStatus);
+    return;
+  }
+  throw new Error("Expected OpenAiBusinessAdvisorProviderFailure.");
 }
 
 Deno.test("rejects malformed, duplicate, and extra public request fields", () => {
@@ -335,6 +356,56 @@ Deno.test("returns a neutral unavailable error without leaking provider detail",
   assert(!body.includes("provider"));
 });
 
+Deno.test("logs only fixed provider failure metadata", async () => {
+  const events: AiBusinessAdvisorRuntimeFailureLogEvent[] = [];
+  const fake = makeDependencies({
+    advisor: () =>
+      Promise.reject(
+        new OpenAiBusinessAdvisorProviderFailure("provider_http_error", 429),
+      ),
+    requestId: () => "safe-provider-request",
+    nowMilliseconds: (() => {
+      const values = [10, 35];
+      return () => values.shift() ?? 35;
+    })(),
+    logger: (event) => {
+      events.push(event);
+    },
+  });
+
+  const response = await createAiBusinessAdvisorHandler(fake.dependencies)(
+    publicRequest(evaluationId, "Bearer sentinel-token"),
+  );
+
+  assertEquals(response.status, 503);
+  assertEquals(await response.json(), { error: "advisor_unavailable" });
+  assertEquals(
+    response.headers.get("x-ai-advisor-request-id"),
+    "safe-provider-request",
+  );
+  assertEquals(events, [{
+    event: "ai_advisor_runtime_failure",
+    stage: "provider_generation_failed",
+    provider_failure_reason: "provider_http_error",
+    provider_http_status: 429,
+    elapsed_ms: 25,
+    request_id: "safe-provider-request",
+  }]);
+  const logged = JSON.stringify(events);
+  for (
+    const value of [
+      "sentinel-token",
+      evaluationId,
+      "private@example.test",
+      "4.12345,114.12345",
+      "provider response body",
+      "1548750.00",
+    ]
+  ) {
+    assert(!logged.includes(value));
+  }
+});
+
 Deno.test("calls the exact fixed Responses endpoint, model, no-tools request, and strict schema", async () => {
   const callCapture: { url: string; init: RequestInit | null } = {
     url: "",
@@ -345,13 +416,9 @@ Deno.test("calls the exact fixed Responses endpoint, model, no-tools request, an
     http: (url, init) => {
       callCapture.url = url;
       callCapture.init = init;
-      return Promise.resolve(jsonResponse({
-        status: "completed",
-        error: null,
-        incomplete_details: null,
-        output: [],
-        output_text: JSON.stringify(sampleInsightRecord()),
-      }));
+      return Promise.resolve(
+        jsonResponse(completedOpenAiResponse(sampleInsightRecord())),
+      );
     },
   });
   const insight = await advisor.create(sampleEvaluation.advisorInput);
@@ -380,7 +447,7 @@ Deno.test("calls the exact fixed Responses endpoint, model, no-tools request, an
   assert(!String(request.input).includes("Module 3 AI Insight Test Station"));
 });
 
-Deno.test("handles timeout and non-200 OpenAI responses as neutral availability failures", async () => {
+Deno.test("classifies timeout and non-2xx OpenAI responses with fixed reasons", async () => {
   const timeoutAdvisor = createOpenAiBusinessAdvisor({
     apiKey: "test-key",
     timeoutMs: 1,
@@ -393,9 +460,9 @@ Deno.test("handles timeout and non-200 OpenAI responses as neutral availability 
         );
       }),
   });
-  await assertRejects(
+  await assertRejectsProvider(
     () => timeoutAdvisor.create(sampleEvaluation.advisorInput),
-    AiBusinessAdvisorUnavailable,
+    "provider_timeout",
   );
 
   const rejectedAdvisor = createOpenAiBusinessAdvisor({
@@ -403,52 +470,92 @@ Deno.test("handles timeout and non-200 OpenAI responses as neutral availability 
     http: () =>
       Promise.resolve(new Response("private provider error", { status: 429 })),
   });
-  await assertRejects(
+  await assertRejectsProvider(
     () => rejectedAdvisor.create(sampleEvaluation.advisorInput),
-    AiBusinessAdvisorUnavailable,
+    "provider_http_error",
+    429,
   );
 });
 
-Deno.test("rejects OpenAI refusal, incomplete, malformed, and oversized output", async () => {
+Deno.test("accepts official Responses output after reasoning and completed assistant message", async () => {
+  const advisor = createOpenAiBusinessAdvisor({
+    apiKey: "test-key",
+    http: () =>
+      Promise.resolve(
+        jsonResponse(completedOpenAiResponse(sampleInsightRecord())),
+      ),
+  });
+
+  const insight = await advisor.create(sampleEvaluation.advisorInput);
+  assertEquals(
+    insight.executiveSummary,
+    sampleInsightRecord().executive_summary,
+  );
+});
+
+Deno.test("rejects incomplete, refusal, malformed, missing, invalid, and oversized provider output", async () => {
   for (
-    const payload of [
+    const testCase of [
       {
-        status: "incomplete",
-        error: null,
-        incomplete_details: { reason: "limit" },
-        output: [],
-        output_text: "{}",
+        reason: "provider_incomplete" as const,
+        response: () =>
+          jsonResponse({
+            status: "incomplete",
+            error: null,
+            incomplete_details: { reason: "max_output_tokens" },
+            output: [],
+          }),
       },
       {
-        status: "completed",
-        error: null,
-        incomplete_details: null,
-        output: [{ content: [{ type: "refusal" }] }],
-        output_text: "{}",
+        reason: "provider_refusal" as const,
+        response: () =>
+          jsonResponse({
+            status: "completed",
+            error: null,
+            incomplete_details: null,
+            output: [{
+              type: "message",
+              role: "assistant",
+              status: "completed",
+              content: [{
+                type: "refusal",
+                refusal: "private provider detail",
+              }],
+            }],
+          }),
       },
       {
-        status: "completed",
-        error: null,
-        incomplete_details: null,
-        output: [],
-        output_text: "not json",
+        reason: "provider_response_invalid_json" as const,
+        response: () => new Response("not json"),
       },
       {
-        status: "completed",
-        error: null,
-        incomplete_details: null,
-        output: [],
-        output_text: "x".repeat(32_769),
+        reason: "provider_output_missing" as const,
+        response: () =>
+          jsonResponse({
+            status: "completed",
+            error: null,
+            incomplete_details: null,
+            output: [{ type: "reasoning", summary: [] }],
+          }),
+      },
+      {
+        reason: "provider_insight_invalid" as const,
+        response: () => jsonResponse(completedOpenAiResponse({})),
+      },
+      {
+        reason: "provider_response_too_large" as const,
+        response: () =>
+          new Response("x".repeat(maximumOpenAiResponseBytes + 1)),
       },
     ]
   ) {
     const advisor = createOpenAiBusinessAdvisor({
       apiKey: "test-key",
-      http: () => Promise.resolve(jsonResponse(payload)),
+      http: () => Promise.resolve(testCase.response()),
     });
-    await assertRejects(
+    await assertRejectsProvider(
       () => advisor.create(sampleEvaluation.advisorInput),
-      AiBusinessAdvisorUnavailable,
+      testCase.reason,
     );
   }
 });
@@ -677,6 +784,23 @@ function jsonResponse(value: unknown): Response {
   return new Response(JSON.stringify(value), {
     headers: { "content-type": "application/json" },
   });
+}
+
+function completedOpenAiResponse(insight: unknown): Record<string, unknown> {
+  return {
+    status: "completed",
+    error: null,
+    incomplete_details: null,
+    output: [
+      { type: "reasoning", summary: [] },
+      {
+        type: "message",
+        role: "assistant",
+        status: "completed",
+        content: [{ type: "output_text", text: JSON.stringify(insight) }],
+      },
+    ],
+  };
 }
 
 function assertThrowsRequest(callback: () => unknown): void {

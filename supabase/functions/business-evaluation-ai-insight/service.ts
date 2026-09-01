@@ -9,6 +9,8 @@ import {
   InvalidAiBusinessAdvisorInsight,
   InvalidAiBusinessAdvisorRequest,
   InvalidStoredBusinessEvaluation,
+  OpenAiBusinessAdvisorProviderFailure,
+  type OpenAiBusinessAdvisorProviderFailureReason,
   parseAiBusinessAdvisorInsight,
   parseBoundedAiBusinessAdvisorRequest,
   sha256Hex,
@@ -81,6 +83,8 @@ export type AiBusinessAdvisorRuntimeFailureStage =
 export type AiBusinessAdvisorRuntimeFailureLogEvent = {
   event: typeof aiBusinessAdvisorRuntimeFailureEvent;
   stage: AiBusinessAdvisorRuntimeFailureStage;
+  provider_failure_reason?: OpenAiBusinessAdvisorProviderFailureReason;
+  provider_http_status?: number;
   elapsed_ms: number;
   request_id: string;
 };
@@ -128,10 +132,19 @@ export class AuthenticationUnavailable extends Error {
 
 class AiBusinessAdvisorRuntimeFailure extends AiBusinessAdvisorUnavailable {
   readonly stage: AiBusinessAdvisorRuntimeFailureStage;
+  readonly providerFailureReason:
+    | OpenAiBusinessAdvisorProviderFailureReason
+    | undefined;
+  readonly providerHttpStatus: number | undefined;
 
-  constructor(stage: AiBusinessAdvisorRuntimeFailureStage) {
+  constructor(
+    stage: AiBusinessAdvisorRuntimeFailureStage,
+    providerFailure?: OpenAiBusinessAdvisorProviderFailure,
+  ) {
     super();
     this.stage = stage;
+    this.providerFailureReason = providerFailure?.reason;
+    this.providerHttpStatus = providerFailure?.httpStatus;
   }
 }
 
@@ -197,10 +210,20 @@ export function createAiBusinessAdvisorHandler(
         ...headers,
         "x-ai-advisor-request-id": requestId,
       });
-    const logRuntimeFailure = (stage: AiBusinessAdvisorRuntimeFailureStage) => {
+    const logRuntimeFailure = (
+      stage: AiBusinessAdvisorRuntimeFailureStage,
+      providerFailureReason?: OpenAiBusinessAdvisorProviderFailureReason,
+      providerHttpStatus?: number,
+    ) => {
       const event: AiBusinessAdvisorRuntimeFailureLogEvent = {
         event: aiBusinessAdvisorRuntimeFailureEvent,
         stage,
+        ...(providerFailureReason === undefined
+          ? {}
+          : { provider_failure_reason: providerFailureReason }),
+        ...(providerHttpStatus === undefined
+          ? {}
+          : { provider_http_status: providerHttpStatus }),
         elapsed_ms: Math.max(
           0,
           Math.round(nowMilliseconds() - startedAtMilliseconds),
@@ -252,7 +275,11 @@ export function createAiBusinessAdvisorHandler(
         return response({ error: "evaluation_not_found" }, 404);
       }
       if (error instanceof AiBusinessAdvisorRuntimeFailure) {
-        logRuntimeFailure(error.stage);
+        logRuntimeFailure(
+          error.stage,
+          error.providerFailureReason,
+          error.providerHttpStatus,
+        );
       }
       return response({ error: "advisor_unavailable" }, 503);
     }
@@ -294,8 +321,11 @@ export async function loadAiBusinessAdvisorInsight(
   let insight: AiBusinessAdvisorInsight;
   try {
     insight = await dependencies.advisor.create(evaluation.advisorInput);
-  } catch (_) {
-    throw new AiBusinessAdvisorRuntimeFailure("provider_generation_failed");
+  } catch (error) {
+    throw new AiBusinessAdvisorRuntimeFailure(
+      "provider_generation_failed",
+      error instanceof OpenAiBusinessAdvisorProviderFailure ? error : undefined,
+    );
   }
 
   try {
