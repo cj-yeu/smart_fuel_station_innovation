@@ -178,10 +178,10 @@ begin
     v_raw_code := pg_catalog.upper(
       pg_catalog.encode(extensions.gen_random_bytes(12), 'hex')
     );
-    v_raw_code := pg_catalog.substring(v_raw_code from 1 for 6)
-      || '-' || pg_catalog.substring(v_raw_code from 7 for 6)
-      || '-' || pg_catalog.substring(v_raw_code from 13 for 6)
-      || '-' || pg_catalog.substring(v_raw_code from 19 for 6);
+    v_raw_code := pg_catalog.substring(v_raw_code, 1, 6)
+      || '-' || pg_catalog.substring(v_raw_code, 7, 6)
+      || '-' || pg_catalog.substring(v_raw_code, 13, 6)
+      || '-' || pg_catalog.substring(v_raw_code, 19, 6);
     v_code_hash := pg_catalog.encode(
       extensions.digest(
         pg_catalog.convert_to(pg_catalog.btrim(v_raw_code), 'UTF8'),
