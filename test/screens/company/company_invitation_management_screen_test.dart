@@ -3,9 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:smart_fuell_station_innovation/models/company_invitation_code.dart';
-import 'package:smart_fuell_station_innovation/screens/company/company_invitation_management_screen.dart';
-import 'package:smart_fuell_station_innovation/services/company_invitation_repository.dart';
+import 'package:smart_fuel_station_innovation/models/company_invitation_code.dart';
+import 'package:smart_fuel_station_innovation/screens/company/company_invitation_management_screen.dart';
+import 'package:smart_fuel_station_innovation/services/company_invitation_repository.dart';
 
 void main() {
   testWidgets(

@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:smart_fuell_station_innovation/utils/evaluation_number_format.dart';
+import 'package:smart_fuel_station_innovation/utils/evaluation_number_format.dart';
 
 void main() {
   group('EvaluationNumberFormat', () {

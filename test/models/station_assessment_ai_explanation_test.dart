@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:smart_fuell_station_innovation/models/station_assessment_ai_explanation.dart';
+import 'package:smart_fuel_station_innovation/models/station_assessment_ai_explanation.dart';
 
 void main() {
   test('strictly parses the small station-assessment explanation response', () {

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:smart_fuell_station_innovation/models/fuel_company.dart';
-import 'package:smart_fuell_station_innovation/models/user_profile.dart';
-import 'package:smart_fuell_station_innovation/screens/home/home_screen.dart';
+import 'package:smart_fuel_station_innovation/models/fuel_company.dart';
+import 'package:smart_fuel_station_innovation/models/user_profile.dart';
+import 'package:smart_fuel_station_innovation/screens/home/home_screen.dart';
 
 void main() {
   testWidgets('shows Company Invitations only to company administrators', (

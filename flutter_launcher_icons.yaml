@@ -1,0 +1,17 @@
+flutter_launcher_icons:
+  image_path: "assets/branding/fuel_station_launcher_icon.png"
+  android: true
+  ios: true
+  remove_alpha_ios: true
+  web:
+    generate: true
+    image_path: "assets/branding/fuel_station_launcher_icon.png"
+    background_color: "#063D28"
+    theme_color: "#168C4B"
+  windows:
+    generate: true
+    image_path: "assets/branding/fuel_station_launcher_icon.png"
+    icon_size: 48
+  macos:
+    generate: true
+    image_path: "assets/branding/fuel_station_launcher_icon.png"

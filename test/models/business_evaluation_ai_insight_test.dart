@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:smart_fuell_station_innovation/models/business_evaluation_ai_insight.dart';
+import 'package:smart_fuel_station_innovation/models/business_evaluation_ai_insight.dart';
 
 void main() {
   test(

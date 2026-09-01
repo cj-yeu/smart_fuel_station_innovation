@@ -2,11 +2,11 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:smart_fuell_station_innovation/models/station_assessment.dart';
-import 'package:smart_fuell_station_innovation/models/station_assessment_create_input.dart';
-import 'package:smart_fuell_station_innovation/screens/assessment/edit_assessment_screen.dart';
-import 'package:smart_fuell_station_innovation/services/station_assessment_repository.dart';
-import 'package:smart_fuell_station_innovation/services/station_assessment_service.dart';
+import 'package:smart_fuel_station_innovation/models/station_assessment.dart';
+import 'package:smart_fuel_station_innovation/models/station_assessment_create_input.dart';
+import 'package:smart_fuel_station_innovation/screens/assessment/edit_assessment_screen.dart';
+import 'package:smart_fuel_station_innovation/services/station_assessment_repository.dart';
+import 'package:smart_fuel_station_innovation/services/station_assessment_service.dart';
 
 void main() {
   testWidgets('prefills every existing assessment value', (tester) async {

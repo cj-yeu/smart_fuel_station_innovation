@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:smart_fuell_station_innovation/models/geo_point.dart';
-import 'package:smart_fuell_station_innovation/models/nearby_fuel_station_result.dart';
+import 'package:smart_fuel_station_innovation/models/geo_point.dart';
+import 'package:smart_fuel_station_innovation/models/nearby_fuel_station_result.dart';
 
 void main() {
   final point = GeoPoint(latitude: 5.9804, longitude: 116.0735);

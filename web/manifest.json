@@ -1,11 +1,11 @@
 {
-    "name": "smart_fuell_station_innovation",
-    "short_name": "smart_fuell_station_innovation",
+    "name": "Smart Fuel Station Innovation",
+    "short_name": "Fuel Station",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "assignment",
+    "background_color": "#063D28",
+    "theme_color": "#168C4B",
+    "description": "Fuel-station site assessment and profitability planning",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

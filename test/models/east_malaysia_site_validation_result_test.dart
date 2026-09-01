@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:smart_fuell_station_innovation/models/assessment_site_candidate.dart';
-import 'package:smart_fuell_station_innovation/models/east_malaysia_site_validation_result.dart';
-import 'package:smart_fuell_station_innovation/models/east_malaysia_territory.dart';
-import 'package:smart_fuell_station_innovation/models/geo_point.dart';
+import 'package:smart_fuel_station_innovation/models/assessment_site_candidate.dart';
+import 'package:smart_fuel_station_innovation/models/east_malaysia_site_validation_result.dart';
+import 'package:smart_fuel_station_innovation/models/east_malaysia_territory.dart';
+import 'package:smart_fuel_station_innovation/models/geo_point.dart';
 
 void main() {
   const datasetId = '123e4567-e89b-12d3-a456-426614174000';

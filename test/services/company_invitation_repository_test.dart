@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:smart_fuell_station_innovation/models/company_invitation_code.dart';
-import 'package:smart_fuell_station_innovation/services/company_invitation_repository.dart';
+import 'package:smart_fuel_station_innovation/models/company_invitation_code.dart';
+import 'package:smart_fuel_station_innovation/services/company_invitation_repository.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() {

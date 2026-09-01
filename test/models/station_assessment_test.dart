@@ -1,9 +1,9 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:smart_fuell_station_innovation/models/station_assessment.dart';
-import 'package:smart_fuell_station_innovation/models/east_malaysia_territory.dart';
-import 'package:smart_fuell_station_innovation/models/geo_point.dart';
+import 'package:smart_fuel_station_innovation/models/station_assessment.dart';
+import 'package:smart_fuel_station_innovation/models/east_malaysia_territory.dart';
+import 'package:smart_fuel_station_innovation/models/geo_point.dart';
 
 void main() {
   group('StationAssessment.fromMap', () {

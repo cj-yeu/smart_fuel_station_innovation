@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:smart_fuell_station_innovation/models/station_assessment_create_input.dart';
+import 'package:smart_fuel_station_innovation/models/station_assessment_create_input.dart';
 
 void main() {
   group('StationAssessmentCreateInput.toInsertMap', () {

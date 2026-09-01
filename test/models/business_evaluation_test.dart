@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:smart_fuell_station_innovation/models/business_evaluation.dart';
-import 'package:smart_fuell_station_innovation/services/business_evaluation_service.dart';
+import 'package:smart_fuel_station_innovation/models/business_evaluation.dart';
+import 'package:smart_fuel_station_innovation/services/business_evaluation_service.dart';
 
 void main() {
   test(

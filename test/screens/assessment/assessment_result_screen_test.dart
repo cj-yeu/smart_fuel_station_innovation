@@ -2,10 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:smart_fuell_station_innovation/models/station_assessment_ai_explanation.dart';
-import 'package:smart_fuell_station_innovation/screens/assessment/assessment_result_screen.dart';
-import 'package:smart_fuell_station_innovation/services/station_assessment_ai_explanation_repository.dart';
-import 'package:smart_fuell_station_innovation/services/station_assessment_service.dart';
+import 'package:smart_fuel_station_innovation/models/station_assessment_ai_explanation.dart';
+import 'package:smart_fuel_station_innovation/screens/assessment/assessment_result_screen.dart';
+import 'package:smart_fuel_station_innovation/services/station_assessment_ai_explanation_repository.dart';
+import 'package:smart_fuel_station_innovation/services/station_assessment_service.dart';
 
 void main() {
   const assessmentId = '123e4567-e89b-12d3-a456-426614174000';

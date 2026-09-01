@@ -2,9 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:smart_fuell_station_innovation/models/station_assessment.dart';
-import 'package:smart_fuell_station_innovation/screens/assessment/assessment_list_screen.dart';
-import 'package:smart_fuell_station_innovation/services/station_assessment_repository.dart';
+import 'package:smart_fuel_station_innovation/models/station_assessment.dart';
+import 'package:smart_fuel_station_innovation/screens/assessment/assessment_list_screen.dart';
+import 'package:smart_fuel_station_innovation/services/station_assessment_repository.dart';
 
 void main() {
   const currentUserId = '20000000-0000-0000-0000-000000000001';

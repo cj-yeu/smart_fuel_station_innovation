@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:smart_fuell_station_innovation/services/station_assessment_ai_explanation_repository.dart';
+import 'package:smart_fuel_station_innovation/services/station_assessment_ai_explanation_repository.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() {

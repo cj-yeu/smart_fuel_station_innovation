@@ -2,11 +2,11 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:smart_fuell_station_innovation/models/business_evaluation.dart';
-import 'package:smart_fuell_station_innovation/models/business_evaluation_ai_insight.dart';
-import 'package:smart_fuell_station_innovation/screens/evaluation/evaluation_result_screen.dart';
-import 'package:smart_fuell_station_innovation/services/business_evaluation_ai_insight_repository.dart';
-import 'package:smart_fuell_station_innovation/services/business_evaluation_service.dart';
+import 'package:smart_fuel_station_innovation/models/business_evaluation.dart';
+import 'package:smart_fuel_station_innovation/models/business_evaluation_ai_insight.dart';
+import 'package:smart_fuel_station_innovation/screens/evaluation/evaluation_result_screen.dart';
+import 'package:smart_fuel_station_innovation/services/business_evaluation_ai_insight_repository.dart';
+import 'package:smart_fuel_station_innovation/services/business_evaluation_service.dart';
 
 void main() {
   testWidgets('initial card does not generate an insight', (tester) async {

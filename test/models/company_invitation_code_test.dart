@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:smart_fuell_station_innovation/models/company_invitation_code.dart';
+import 'package:smart_fuel_station_innovation/models/company_invitation_code.dart';
 
 void main() {
   const invitationId = '123e4567-e89b-12d3-a456-426614174000';
