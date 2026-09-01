@@ -577,7 +577,7 @@ do $module1_invitation_management_postconditions$
 declare
   v_function regprocedure;
 begin
-  foreach v_function in array[
+  foreach v_function in array array[
     'public.create_company_invitation_code(integer,integer)'::regprocedure,
     'public.list_company_invitation_codes()'::regprocedure,
     'public.revoke_company_invitation_code(uuid)'::regprocedure
