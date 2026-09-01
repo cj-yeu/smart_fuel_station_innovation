@@ -295,6 +295,7 @@ select pg_temp.assert_true(
   (
     select pg_catalog.count(*) = 1
       and pg_catalog.bool_and(raw_code ~ '^[A-F0-9]{6}(-[A-F0-9]{6}){3}$')
+      and pg_catalog.bool_and(pg_catalog.char_length(raw_code) = 27)
     from pg_temp.module1_invitation_management_generated_codes
     where label = 'revoked'
   ),
@@ -329,10 +330,11 @@ select pg_temp.assert_true(
     where pg_catalog.to_jsonb(listing) ? 'invitation_code'
       or pg_catalog.to_jsonb(listing) ? 'code_hash'
   )
-  and pg_catalog.position(
-    'code_hash' in pg_catalog.pg_get_functiondef(
+  and pg_catalog.strpos(
+    pg_catalog.pg_get_functiondef(
       'public.list_company_invitation_codes()'::regprocedure
-    )
+    ),
+    'code_hash'
   ) = 0,
   'list RPC must never return raw invitation codes or code hashes'
 );
@@ -719,17 +721,19 @@ end;
 $module1_invitation_management_active_cap$;
 
 select pg_temp.assert_true(
-  pg_catalog.position(
-    'for update' in pg_catalog.lower(
+  pg_catalog.strpos(
+    pg_catalog.lower(
       pg_catalog.pg_get_functiondef(
         'public.claim_company_membership(text,text)'::regprocedure
       )
-    )
+    ),
+    'for update'
   ) > 0
-  and pg_catalog.position(
-    'revoked_at' in pg_catalog.pg_get_functiondef(
+  and pg_catalog.strpos(
+    pg_catalog.pg_get_functiondef(
       'public.claim_company_membership(text,text)'::regprocedure
-    )
+    ),
+    'revoked_at'
   ) > 0,
   'claim RPC must retain row locking and revoked-code handling'
 );
