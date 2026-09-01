@@ -1,10 +1,23 @@
-export const businessEvaluationAiAdvisorModel = "gpt-5.6-sol";
+import {
+  completedAssistantOutputText,
+  createOpenAiResponsesOutputText,
+  defaultOpenAiTimeoutMs,
+  openAiDefaultModel,
+  openAiResponsesEndpoint,
+  OpenAiResponsesFailure,
+  type OpenAiResponsesFailureReason,
+  readBoundedUtf8Body,
+  sha256Hex,
+} from "../_shared/openai_responses.ts";
+
+export { openAiResponsesEndpoint, readBoundedUtf8Body, sha256Hex };
+
+export const businessEvaluationAiAdvisorModel = openAiDefaultModel;
 export const businessEvaluationAiAdvisorPromptVersion =
   "module3-business-advisor-v1";
-export const openAiResponsesEndpoint = "https://api.openai.com/v1/responses";
 export const maximumAdvisorRequestBodyBytes = 4_096;
 export const maximumOpenAiResponseBytes = 32_768;
-export const openAiTimeoutMs = 18_000;
+export const openAiTimeoutMs = defaultOpenAiTimeoutMs;
 export const maximumOpenAiOutputTokens = 1_200;
 
 const advisorDriverTypes = ["strength", "risk"] as const;
@@ -98,13 +111,7 @@ export class AiBusinessAdvisorUnavailable extends Error {
 }
 
 export type OpenAiBusinessAdvisorProviderFailureReason =
-  | "provider_http_error"
-  | "provider_timeout"
-  | "provider_incomplete"
-  | "provider_refusal"
-  | "provider_response_too_large"
-  | "provider_response_invalid_json"
-  | "provider_output_missing"
+  | OpenAiResponsesFailureReason
   | "provider_insight_invalid";
 
 export class OpenAiBusinessAdvisorProviderFailure
@@ -247,14 +254,6 @@ export function createCanonicalBusinessEvaluationAdvisorInput(value: {
   };
 }
 
-export async function sha256Hex(value: unknown): Promise<string> {
-  const encoded = new TextEncoder().encode(JSON.stringify(value));
-  const digest = await crypto.subtle.digest("SHA-256", encoded);
-  return [...new Uint8Array(digest)]
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
-}
-
 export const businessEvaluationAiInsightJsonSchema = {
   type: "object",
   additionalProperties: false,
@@ -366,45 +365,26 @@ export function createOpenAiBusinessAdvisor(dependencies: {
 } {
   return {
     async create(input) {
-      const controller = new AbortController();
-      const timeout = setTimeout(
-        () => controller.abort(),
-        dependencies.timeoutMs ?? openAiTimeoutMs,
-      );
       try {
-        const response = await dependencies.http(openAiResponsesEndpoint, {
-          method: "POST",
-          headers: {
-            authorization: `Bearer ${dependencies.apiKey}`,
-            "content-type": "application/json",
-          },
-          body: JSON.stringify(buildOpenAiBusinessAdvisorRequest(input)),
-          signal: controller.signal,
+        const outputText = await createOpenAiResponsesOutputText({
+          http: dependencies.http,
+          apiKey: dependencies.apiKey,
+          request: buildOpenAiBusinessAdvisorRequest(input),
+          timeoutMs: dependencies.timeoutMs ?? openAiTimeoutMs,
+          maximumResponseBytes: maximumOpenAiResponseBytes,
         });
-        if (!response.ok) {
-          throw new OpenAiBusinessAdvisorProviderFailure(
-            "provider_http_error",
-            response.status,
-          );
-        }
-        const text = await readOpenAiResponseBody(response, controller);
-        let payload: unknown;
-        try {
-          payload = JSON.parse(text);
-        } catch (_) {
-          throw new OpenAiBusinessAdvisorProviderFailure(
-            "provider_response_invalid_json",
-          );
-        }
-        return parseOpenAiBusinessAdvisorResponse(payload);
+        return parseAiBusinessAdvisorInsight(JSON.parse(outputText));
       } catch (error) {
         if (error instanceof OpenAiBusinessAdvisorProviderFailure) throw error;
-        if (controller.signal.aborted) {
-          throw new OpenAiBusinessAdvisorProviderFailure("provider_timeout");
+        if (error instanceof OpenAiResponsesFailure) {
+          throw new OpenAiBusinessAdvisorProviderFailure(
+            error.reason,
+            error.httpStatus,
+          );
         }
-        throw new OpenAiBusinessAdvisorProviderFailure("provider_http_error");
-      } finally {
-        clearTimeout(timeout);
+        throw new OpenAiBusinessAdvisorProviderFailure(
+          "provider_insight_invalid",
+        );
       }
     },
   };
@@ -416,8 +396,18 @@ export function parseOpenAiBusinessAdvisorResponse(
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     throw new InvalidAiBusinessAdvisorInsight();
   }
-  const response = value as Record<string, unknown>;
-  const outputText = completedOpenAiOutputText(response);
+  let outputText: string;
+  try {
+    outputText = completedAssistantOutputText(value);
+  } catch (error) {
+    if (error instanceof OpenAiResponsesFailure) {
+      throw new OpenAiBusinessAdvisorProviderFailure(
+        error.reason,
+        error.httpStatus,
+      );
+    }
+    throw error;
+  }
   if (
     new TextEncoder().encode(outputText).byteLength > maximumOpenAiResponseBytes
   ) {
@@ -430,126 +420,6 @@ export function parseOpenAiBusinessAdvisorResponse(
     return parseAiBusinessAdvisorInsight(JSON.parse(outputText));
   } catch (_) {
     throw new OpenAiBusinessAdvisorProviderFailure("provider_insight_invalid");
-  }
-}
-
-function completedOpenAiOutputText(response: Record<string, unknown>): string {
-  if (response.status === "incomplete") {
-    throw new OpenAiBusinessAdvisorProviderFailure("provider_incomplete");
-  }
-  if (
-    response.status !== "completed" || response.error !== null ||
-    response.incomplete_details !== null || !Array.isArray(response.output)
-  ) {
-    throw new OpenAiBusinessAdvisorProviderFailure("provider_output_missing");
-  }
-
-  let outputText: string | null = null;
-  let completedAssistantMessageFound = false;
-  for (const item of response.output) {
-    if (item === null || typeof item !== "object" || Array.isArray(item)) {
-      continue;
-    }
-    const outputItem = item as Record<string, unknown>;
-    if (outputItem.type !== "message" || outputItem.role !== "assistant") {
-      continue;
-    }
-    if (
-      outputItem.status !== "completed" || !Array.isArray(outputItem.content)
-    ) {
-      throw new OpenAiBusinessAdvisorProviderFailure("provider_output_missing");
-    }
-    completedAssistantMessageFound = true;
-    for (const part of outputItem.content) {
-      if (part === null || typeof part !== "object" || Array.isArray(part)) {
-        continue;
-      }
-      const contentPart = part as Record<string, unknown>;
-      if (contentPart.type === "refusal") {
-        throw new OpenAiBusinessAdvisorProviderFailure("provider_refusal");
-      }
-      if (contentPart.type !== "output_text") continue;
-      if (typeof contentPart.text !== "string" || outputText !== null) {
-        throw new OpenAiBusinessAdvisorProviderFailure(
-          "provider_output_missing",
-        );
-      }
-      outputText = contentPart.text;
-    }
-  }
-
-  if (!completedAssistantMessageFound || outputText === null) {
-    throw new OpenAiBusinessAdvisorProviderFailure("provider_output_missing");
-  }
-  return outputText;
-}
-
-async function readOpenAiResponseBody(
-  response: Response,
-  controller: AbortController,
-): Promise<string> {
-  const body = response.body;
-  if (body === null) {
-    throw new OpenAiBusinessAdvisorProviderFailure("provider_output_missing");
-  }
-  if (
-    declaredLengthExceedsLimit(
-      response.headers.get("content-length"),
-      maximumOpenAiResponseBytes,
-    )
-  ) {
-    await body.cancel().catch(() => undefined);
-    throw new OpenAiBusinessAdvisorProviderFailure(
-      "provider_response_too_large",
-    );
-  }
-
-  const reader = body.getReader();
-  const chunks: Uint8Array[] = [];
-  let totalBytes = 0;
-  let cancellationStarted = false;
-  const cancelReader = async () => {
-    if (cancellationStarted) return;
-    cancellationStarted = true;
-    await reader.cancel().catch(() => undefined);
-  };
-  try {
-    while (true) {
-      const next = await readAbortableChunk(reader, controller.signal);
-      if (next.done) break;
-      totalBytes += next.value.byteLength;
-      if (totalBytes > maximumOpenAiResponseBytes) {
-        throw new OpenAiBusinessAdvisorProviderFailure(
-          "provider_response_too_large",
-        );
-      }
-      chunks.push(next.value);
-    }
-  } catch (error) {
-    await cancelReader();
-    if (error instanceof OpenAiBusinessAdvisorProviderFailure) throw error;
-    if (controller.signal.aborted) {
-      throw new OpenAiBusinessAdvisorProviderFailure("provider_timeout");
-    }
-    throw new OpenAiBusinessAdvisorProviderFailure(
-      "provider_response_invalid_json",
-    );
-  } finally {
-    reader.releaseLock();
-  }
-
-  const bytes = new Uint8Array(totalBytes);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  try {
-    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-  } catch (_) {
-    throw new OpenAiBusinessAdvisorProviderFailure(
-      "provider_response_invalid_json",
-    );
   }
 }
 
@@ -615,54 +485,6 @@ export function parseAiBusinessAdvisorInsight(
     ),
     disclaimer: boundedString(insight.disclaimer, 500),
   };
-}
-
-export async function readBoundedUtf8Body(
-  body: ReadableStream<Uint8Array> | null,
-  contentLength: string | null,
-  maximumBytes: number,
-  createError: () => Error,
-  signal?: AbortSignal,
-): Promise<string> {
-  if (
-    body === null || !Number.isSafeInteger(maximumBytes) || maximumBytes < 1
-  ) {
-    throw createError();
-  }
-  if (declaredLengthExceedsLimit(contentLength, maximumBytes)) {
-    await body.cancel().catch(() => undefined);
-    throw createError();
-  }
-
-  const reader = body.getReader();
-  const chunks: Uint8Array[] = [];
-  let totalBytes = 0;
-  try {
-    while (true) {
-      const next = await readAbortableChunk(reader, signal);
-      if (next.done) break;
-      totalBytes += next.value.byteLength;
-      if (totalBytes > maximumBytes) throw createError();
-      chunks.push(next.value);
-    }
-  } catch (_) {
-    await reader.cancel().catch(() => undefined);
-    throw createError();
-  } finally {
-    reader.releaseLock();
-  }
-
-  const bytes = new Uint8Array(totalBytes);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  try {
-    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-  } catch (_) {
-    throw createError();
-  }
 }
 
 function parseUuid(value: unknown): string {
@@ -752,31 +574,6 @@ function exactObject(value: unknown, keys: string[]): Record<string, unknown> {
     throw new InvalidAiBusinessAdvisorInsight();
   }
   return record;
-}
-
-function declaredLengthExceedsLimit(
-  contentLength: string | null,
-  maximumBytes: number,
-): boolean {
-  if (contentLength === null) return false;
-  if (!/^[0-9]+$/.test(contentLength.trim())) return true;
-  const declaredLength = Number(contentLength);
-  return !Number.isSafeInteger(declaredLength) || declaredLength > maximumBytes;
-}
-
-async function readAbortableChunk(
-  reader: ReadableStreamDefaultReader<Uint8Array>,
-  signal: AbortSignal | undefined,
-): Promise<ReadableStreamReadResult<Uint8Array>> {
-  if (signal === undefined) return reader.read();
-  if (signal.aborted) throw new DOMException("Aborted", "AbortError");
-  return await new Promise((resolve, reject) => {
-    const onAbort = () => reject(new DOMException("Aborted", "AbortError"));
-    signal.addEventListener("abort", onAbort, { once: true });
-    void reader.read().then(resolve, reject).finally(() => {
-      signal.removeEventListener("abort", onAbort);
-    });
-  });
 }
 
 class ExactAiBusinessAdvisorJsonCursor {
