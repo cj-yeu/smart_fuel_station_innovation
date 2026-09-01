@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../models/user_profile.dart';
 import '../../services/app_theme_controller.dart';
 import '../assessment/assessment_list_screen.dart';
+import '../company/company_invitation_management_screen.dart';
 import '../evaluation/evaluation_list_screen.dart';
 import '../user/profile_screen.dart';
 
@@ -176,6 +177,21 @@ class _HomeScreenState extends State<HomeScreen> {
               );
             },
           ),
+          if (widget.profile.isCompanyAdmin)
+            dashboardCard(
+              icon: Icons.key_outlined,
+              title: 'Company Invitations',
+              subtitle: 'Generate and revoke employee invitation codes',
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) =>
+                        const CompanyInvitationManagementScreen(),
+                  ),
+                );
+              },
+            ),
         ],
       ),
     );
