@@ -137,7 +137,9 @@ void main() {
 
       await tester.tap(find.text('Select first'));
       await tester.pump();
-      await tester.tap(find.byKey(const ValueKey('validate-site-button')));
+      final validateButton = find.byKey(const ValueKey('validate-site-button'));
+      await ensureMapPanelTargetMounted(tester, validateButton);
+      await tester.tap(validateButton);
       await tester.pump();
 
       expect(callCount, 1);
@@ -169,7 +171,9 @@ void main() {
         isNull,
       );
 
-      await tester.tap(find.text('Select second'));
+      final selectSecond = find.text('Select second');
+      await ensureMapPanelTargetMounted(tester, selectSecond);
+      await tester.tap(selectSecond);
       await tester.pump();
       expect(callCount, 1);
       expect(find.textContaining('5.98040'), findsOneWidget);
@@ -326,7 +330,9 @@ void main() {
     expect(find.textContaining('Sensitive PostgREST'), findsNothing);
     expect(find.textContaining('5.98040'), findsOneWidget);
 
-    await tester.tap(find.byKey(const ValueKey('validate-site-button')));
+    final validateButton = find.byKey(const ValueKey('validate-site-button'));
+    await ensureMapPanelTargetMounted(tester, validateButton);
+    await tester.tap(validateButton);
     await tester.pumpAndSettle();
     expect(callCount, 2);
     expect(find.text('Confirmed in Sabah'), findsOneWidget);
@@ -355,13 +361,17 @@ void main() {
     await selectAndValidate(tester);
     expect(find.text('Confirmed in Sabah'), findsOneWidget);
 
-    await tester.tap(find.text('Select second'));
+    final selectSecond = find.text('Select second');
+    await ensureMapPanelTargetMounted(tester, selectSecond);
+    await tester.tap(selectSecond);
     await tester.pump();
     expect(find.text('Not yet geographically validated'), findsOneWidget);
     expect(find.textContaining('1.55330'), findsOneWidget);
     expect(nextPoint, firstPoint);
 
-    await tester.tap(find.byKey(const ValueKey('validate-site-button')));
+    final validateButton = find.byKey(const ValueKey('validate-site-button'));
+    await ensureMapPanelTargetMounted(tester, validateButton);
+    await tester.tap(validateButton);
     await tester.pumpAndSettle();
     expect(find.text('Confirmed in Sabah'), findsOneWidget);
     expect(nextPoint, secondPoint);
@@ -404,13 +414,18 @@ void main() {
 
     await tester.tap(find.text('Select first'));
     await tester.pump();
-    await tester.tap(find.byKey(const ValueKey('validate-site-button')));
+    final validateButton = find.byKey(const ValueKey('validate-site-button'));
+    await ensureMapPanelTargetMounted(tester, validateButton);
+    await tester.tap(validateButton);
     await tester.pump();
     expect(lookupCount, 1);
 
-    await tester.tap(find.text('Select second'));
+    final selectSecond = find.text('Select second');
+    await ensureMapPanelTargetMounted(tester, selectSecond);
+    await tester.tap(selectSecond);
     await tester.pump();
-    await tester.tap(find.byKey(const ValueKey('validate-site-button')));
+    await ensureMapPanelTargetMounted(tester, validateButton);
+    await tester.tap(validateButton);
     await tester.pump();
     expect(lookupCount, 2);
 
@@ -446,14 +461,19 @@ void main() {
 
     await tester.tap(find.text('Select first'));
     await tester.pump();
-    await tester.tap(find.byKey(const ValueKey('validate-site-button')));
+    final validateButton = find.byKey(const ValueKey('validate-site-button'));
+    await ensureMapPanelTargetMounted(tester, validateButton);
+    await tester.tap(validateButton);
     await tester.pump();
     await tester.pump();
     expect(siteDataCalls, 1);
 
-    await tester.tap(find.text('Select second'));
+    final selectSecond = find.text('Select second');
+    await ensureMapPanelTargetMounted(tester, selectSecond);
+    await tester.tap(selectSecond);
     await tester.pump();
-    await tester.tap(find.byKey(const ValueKey('validate-site-button')));
+    await ensureMapPanelTargetMounted(tester, validateButton);
+    await tester.tap(validateButton);
     await tester.pump();
     await tester.pump();
     expect(siteDataCalls, 2);
@@ -523,18 +543,28 @@ void main() {
       find.byKey(const ValueKey('east-malaysia-map-pane')),
       findsOneWidget,
     );
-    expect(find.byKey(const ValueKey('map-details-scroll')), findsOneWidget);
+    expect(find.byKey(const ValueKey('map-page-scroll')), findsOneWidget);
     expect(find.text('Nearby fuel stations: 8'), findsOneWidget);
 
-    final detailsScroll = mapDetailsScrollable();
-    final detailsState = tester.state<ScrollableState>(detailsScroll);
-    expect(detailsState.position.maxScrollExtent, greaterThan(0));
-    final radiusLabel = find.text('Analysis radius:');
-    await tester.scrollUntilVisible(
-      radiusLabel,
-      120,
-      scrollable: detailsScroll,
+    final pageScroll = mapPageScrollable();
+    final pageState = tester.state<ScrollableState>(pageScroll);
+    expect(pageState.position.maxScrollExtent, greaterThan(0));
+    final mapTopBeforeScroll = tester.getTopLeft(
+      find.byKey(const ValueKey('east-malaysia-map-pane')),
     );
+    await tester.drag(
+      find.text('Sabah • Sarawak • Labuan'),
+      const Offset(0, -180),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .getTopLeft(find.byKey(const ValueKey('east-malaysia-map-pane')))
+          .dy,
+      lessThan(mapTopBeforeScroll.dy),
+    );
+    final radiusLabel = find.text('Analysis radius:');
+    await tester.scrollUntilVisible(radiusLabel, 120, scrollable: pageScroll);
     await tester.pumpAndSettle();
     expect(radiusLabel.hitTestable(), findsOneWidget);
     expect(
@@ -544,45 +574,44 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets(
-    'landscape uses a responsive two-column layout without overflow',
-    (tester) async {
-      await setTestViewport(tester, const Size(932, 430));
-      final result = validationResult(
-        status: GeographicValidationStatus.inside,
-        point: firstPoint,
-        territory: EastMalaysiaTerritory.sabah,
-      );
+  testWidgets('landscape uses one scrollable page without overflow', (
+    tester,
+  ) async {
+    await setTestViewport(tester, const Size(932, 430));
+    final result = validationResult(
+      status: GeographicValidationStatus.inside,
+      point: firstPoint,
+      territory: EastMalaysiaTerritory.sabah,
+    );
 
-      await pumpMapScreen(
-        tester,
-        validator: ({required point, required analysisRadiusKm}) async =>
-            result,
-        initialSelection: completeSelection(result),
-        mapContentBuilder: selectionBuilder(firstPoint, secondPoint),
-      );
-      await tester.pumpAndSettle();
+    await pumpMapScreen(
+      tester,
+      validator: ({required point, required analysisRadiusKm}) async => result,
+      initialSelection: completeSelection(result),
+      mapContentBuilder: selectionBuilder(firstPoint, secondPoint),
+    );
+    await tester.pumpAndSettle();
 
-      final landscape = find.byKey(const ValueKey('landscape-map-layout'));
-      final mapPane = find.byKey(const ValueKey('east-malaysia-map-pane'));
-      expect(landscape, findsOneWidget);
-      expect(find.byKey(const ValueKey('portrait-map-layout')), findsNothing);
-      expect(find.byKey(const ValueKey('map-details-scroll')), findsOneWidget);
-
-      final mapFraction =
-          tester.getSize(mapPane).width / tester.getSize(landscape).width;
-      expect(mapFraction, inInclusiveRange(0.58, 0.65));
-      expect(
-        find.byKey(const ValueKey('cancel-map-button')).hitTestable(),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const ValueKey('use-candidate-button')).hitTestable(),
-        findsOneWidget,
-      );
-      expect(tester.takeException(), isNull);
-    },
-  );
+    final landscape = find.byKey(const ValueKey('landscape-map-layout'));
+    final mapPane = find.byKey(const ValueKey('east-malaysia-map-pane'));
+    expect(landscape, findsOneWidget);
+    expect(find.byKey(const ValueKey('portrait-map-layout')), findsNothing);
+    expect(find.byKey(const ValueKey('map-page-scroll')), findsOneWidget);
+    expect(tester.getSize(mapPane).width, greaterThan(800));
+    await ensureMapPanelTargetMounted(
+      tester,
+      find.byKey(const ValueKey('cancel-map-button')),
+    );
+    expect(
+      find.byKey(const ValueKey('cancel-map-button')).hitTestable(),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('use-candidate-button')).hitTestable(),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('landscape Cancel is visible and returns null', (tester) async {
     await setTestViewport(tester, const Size(932, 430));
@@ -605,6 +634,7 @@ void main() {
     await tester.pumpAndSettle();
 
     final cancelButton = find.byKey(const ValueKey('cancel-map-button'));
+    await ensureMapPanelTargetMounted(tester, cancelButton);
     expect(cancelButton.hitTestable(), findsOneWidget);
     await tester.tap(cancelButton.hitTestable());
     await tester.pumpAndSettle();
@@ -638,6 +668,7 @@ void main() {
       await tester.pumpAndSettle();
 
       final useButton = find.byKey(const ValueKey('use-candidate-button'));
+      await ensureMapPanelTargetMounted(tester, useButton);
       expect(useButton.hitTestable(), findsOneWidget);
       await tester.tap(useButton.hitTestable());
       await tester.pumpAndSettle();
@@ -710,7 +741,9 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('10 km').last);
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('validate-site-button')));
+      final validateButton = find.byKey(const ValueKey('validate-site-button'));
+      await ensureMapPanelTargetMounted(tester, validateButton);
+      await tester.tap(validateButton);
       await tester.pumpAndSettle();
 
       expect(validationCalls, 1);
@@ -748,6 +781,7 @@ void main() {
       expect(tester.takeException(), isNull);
 
       final useButton = find.byKey(const ValueKey('use-candidate-button'));
+      await ensureMapPanelTargetMounted(tester, useButton);
       expect(useButton.hitTestable(), findsOneWidget);
       await tester.tap(useButton.hitTestable());
       await tester.pumpAndSettle();
@@ -782,7 +816,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final detailsScroll = mapDetailsScrollable();
+    final detailsScroll = mapPageScrollable();
     final toggle = find.byKey(
       const ValueKey('toggle-nearby-fuel-stations-button'),
     );
@@ -802,6 +836,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(lastStation.hitTestable(), findsOneWidget);
+    await ensureMapPanelTargetMounted(
+      tester,
+      find.byKey(const ValueKey('cancel-map-button')),
+    );
     expect(
       find.byKey(const ValueKey('cancel-map-button')).hitTestable(),
       findsOneWidget,
@@ -898,10 +936,10 @@ EastMalaysiaMapContentBuilder selectionBuilder(
   );
 }
 
-Finder mapDetailsScrollable() {
+Finder mapPageScrollable() {
   return find
       .descendant(
-        of: find.byKey(const ValueKey('map-details-scroll')),
+        of: find.byKey(const ValueKey('map-page-scroll')),
         matching: find.byType(Scrollable),
       )
       .first;
@@ -1087,7 +1125,9 @@ Future<void> ensureMapPanelTargetMounted(
 ) async {
   expect(target, findsOneWidget);
   await tester.ensureVisible(target);
-  await tester.pumpAndSettle();
+  // Some map tests intentionally keep provider work pending. One frame is
+  // enough to apply the scroll without waiting for those pending futures.
+  await tester.pump();
 }
 
 Future<void> pumpMapRoute(

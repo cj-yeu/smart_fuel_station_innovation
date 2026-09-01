@@ -968,6 +968,8 @@ class _EastMalaysiaMapScreenState extends State<EastMalaysiaMapScreen> {
             textAlign: TextAlign.center,
           ),
         const SizedBox(height: 6),
+        buildRadiusAndValidationControls(currentCandidate),
+        const SizedBox(height: 8),
         DecoratedBox(
           key: const ValueKey('site-validation-summary'),
           decoration: BoxDecoration(
@@ -1021,72 +1023,15 @@ class _EastMalaysiaMapScreenState extends State<EastMalaysiaMapScreen> {
             style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant),
           ),
         ),
-        buildRadiusAndValidationControls(currentCandidate),
       ],
-    );
-  }
-
-  Widget buildDetailsScroller(AssessmentSiteCandidate? currentCandidate) {
-    return SingleChildScrollView(
-      key: const ValueKey('map-details-scroll'),
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-      child: buildDetailsContent(currentCandidate),
     );
   }
 
   Widget buildPortraitLayout(AssessmentSiteCandidate? currentCandidate) {
-    final colors = Theme.of(context).colorScheme;
-    return Column(
+    return buildScrollableMapLayout(
       key: const ValueKey('portrait-map-layout'),
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        const Padding(
-          padding: EdgeInsets.fromLTRB(16, 12, 16, 6),
-          child: Text(
-            'Sabah • Sarawak • Labuan',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-          child: Material(
-            color: colors.primaryContainer,
-            borderRadius: BorderRadius.circular(12),
-            child: Padding(
-              padding: const EdgeInsets.all(10),
-              child: Text(
-                'The map viewport is for navigation only. Territory '
-                'eligibility will be determined by authoritative boundary '
-                'validation.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: colors.onPrimaryContainer),
-              ),
-            ),
-          ),
-        ),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(flex: 3, child: buildMapPane(currentCandidate)),
-              Expanded(
-                flex: 2,
-                child: Column(
-                  children: [
-                    Expanded(child: buildDetailsScroller(currentCandidate)),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                      child: buildFinalActions(),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
+      currentCandidate: currentCandidate,
+      mapHeight: 420,
     );
   }
 
@@ -1094,35 +1039,75 @@ class _EastMalaysiaMapScreenState extends State<EastMalaysiaMapScreen> {
     AssessmentSiteCandidate? currentCandidate,
     BoxConstraints constraints,
   ) {
-    final panelFraction = constraints.maxWidth >= 1000
-        ? 0.36
-        : constraints.maxWidth >= 700
-        ? 0.40
-        : 0.44;
-
-    return Row(
+    // A short landscape viewport cannot safely hold a fixed map beside a fixed
+    // details panel. Keep both in one vertical page so swiping up moves the
+    // map out of the way and reveals the full candidate controls.
+    final mapHeight = (constraints.maxHeight * 0.82).clamp(260.0, 420.0);
+    return buildScrollableMapLayout(
       key: const ValueKey('landscape-map-layout'),
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Expanded(child: buildMapPane(currentCandidate)),
-        VerticalDivider(
-          width: 1,
-          thickness: 1,
-          color: Theme.of(context).colorScheme.outlineVariant,
-        ),
-        SizedBox(
-          width: constraints.maxWidth * panelFraction,
-          child: Column(
-            children: [
-              Expanded(child: buildDetailsScroller(currentCandidate)),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
-                child: buildFinalActions(),
-              ),
-            ],
+      currentCandidate: currentCandidate,
+      mapHeight: mapHeight.toDouble(),
+    );
+  }
+
+  Widget buildScrollableMapLayout({
+    required Key key,
+    required AssessmentSiteCandidate? currentCandidate,
+    required double mapHeight,
+  }) {
+    final colors = Theme.of(context).colorScheme;
+    return SingleChildScrollView(
+      key: const ValueKey('map-page-scroll'),
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      child: Column(
+        key: key,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 12, 16, 6),
+            child: Text(
+              'Sabah • Sarawak • Labuan',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
           ),
-        ),
-      ],
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Material(
+              color: colors.primaryContainer,
+              borderRadius: BorderRadius.circular(12),
+              child: Padding(
+                padding: const EdgeInsets.all(10),
+                child: Text(
+                  'The map viewport is for navigation only. Territory '
+                  'eligibility will be determined by authoritative boundary '
+                  'validation.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: colors.onPrimaryContainer),
+                ),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: SizedBox(
+              height: mapHeight,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: buildMapPane(currentCandidate),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+            child: buildDetailsContent(currentCandidate),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: buildFinalActions(),
+          ),
+        ],
+      ),
     );
   }
 
