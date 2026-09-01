@@ -190,7 +190,7 @@ class _EditAssessmentScreenState extends State<EditAssessmentScreen> {
           StationAssessmentRepository(
             Supabase.instance.client,
           ).updateAssessment;
-      await updater(widget.assessment.id, input);
+      final savedAssessment = await updater(widget.assessment.id, input);
 
       if (!mounted) return;
 
@@ -200,6 +200,7 @@ class _EditAssessmentScreenState extends State<EditAssessmentScreen> {
           builder: (context) => AssessmentResultScreen(
             locationName: locationName,
             result: result,
+            assessmentId: savedAssessment.id,
           ),
         ),
       );

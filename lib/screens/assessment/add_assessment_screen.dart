@@ -374,6 +374,7 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
       );
 
       final validationResult = selectedSiteValidationResult;
+      late final StationAssessment savedAssessment;
       if (validationResult != null) {
         final payloadFingerprint =
             StationAssessmentValidatedCreateInput.payloadFingerprint(
@@ -391,14 +392,15 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
           validationResult: validationResult,
           requestId: validatedRequestId!,
         );
-        await (widget.validatedAssessmentCreator ??
-            StationAssessmentRepository(
-              Supabase.instance.client,
-            ).createValidatedAssessment)(validatedInput);
+        savedAssessment =
+            await (widget.validatedAssessmentCreator ??
+                StationAssessmentRepository(
+                  Supabase.instance.client,
+                ).createValidatedAssessment)(validatedInput);
         validatedRequestId = null;
         validatedPayloadFingerprint = null;
       } else {
-        await assessmentCreator(input);
+        savedAssessment = await assessmentCreator(input);
       }
 
       await clearDraft();
@@ -411,6 +413,7 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
           builder: (context) => AssessmentResultScreen(
             locationName: locationName,
             result: result,
+            assessmentId: savedAssessment.id,
           ),
         ),
       );

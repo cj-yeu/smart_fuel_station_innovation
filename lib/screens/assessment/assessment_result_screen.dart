@@ -1,19 +1,85 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../models/station_assessment_ai_explanation.dart';
+import '../../services/station_assessment_ai_explanation_repository.dart';
 import '../../services/station_assessment_service.dart';
 
-class AssessmentResultScreen extends StatelessWidget {
+typedef StationAssessmentAiExplanationGenerator =
+    Future<StationAssessmentAiExplanation> Function(String assessmentId);
+
+class AssessmentResultScreen extends StatefulWidget {
   final String locationName;
   final AssessmentResult result;
+  final String? assessmentId;
+  final StationAssessmentAiExplanationGenerator? aiExplanationGenerator;
 
   const AssessmentResultScreen({
     super.key,
     required this.locationName,
     required this.result,
+    this.assessmentId,
+    this.aiExplanationGenerator,
   });
 
+  @override
+  State<AssessmentResultScreen> createState() => _AssessmentResultScreenState();
+}
+
+class _AssessmentResultScreenState extends State<AssessmentResultScreen> {
+  bool isLoadingAiExplanation = false;
+  String? generatedAiExplanation;
+  bool aiExplanationUnavailable = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.assessmentId != null) {
+      generateAiExplanation();
+    }
+  }
+
+  Future<void> generateAiExplanation() async {
+    final assessmentId = widget.assessmentId;
+    if (assessmentId == null || isLoadingAiExplanation) return;
+
+    setState(() {
+      isLoadingAiExplanation = true;
+      aiExplanationUnavailable = false;
+    });
+
+    try {
+      final generator =
+          widget.aiExplanationGenerator ??
+          StationAssessmentAiExplanationRepository(
+            Supabase.instance.client,
+          ).generateExplanation;
+      final explanation = await generator(assessmentId);
+      if (!mounted) return;
+      setState(() {
+        generatedAiExplanation = explanation.explanation;
+      });
+    } on StationAssessmentAiExplanationUnavailableException {
+      if (!mounted) return;
+      setState(() {
+        aiExplanationUnavailable = true;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        aiExplanationUnavailable = true;
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          isLoadingAiExplanation = false;
+        });
+      }
+    }
+  }
+
   Color get categoryColor {
-    switch (result.category) {
+    switch (widget.result.category) {
       case 'Good':
         return Colors.green;
       case 'Moderate':
@@ -24,7 +90,7 @@ class AssessmentResultScreen extends StatelessWidget {
   }
 
   IconData get categoryIcon {
-    switch (result.category) {
+    switch (widget.result.category) {
       case 'Good':
         return Icons.check_circle;
       case 'Moderate':
@@ -49,7 +115,7 @@ class AssessmentResultScreen extends StatelessWidget {
         padding: const EdgeInsets.all(24),
         children: [
           Text(
-            locationName,
+            widget.locationName,
             textAlign: TextAlign.center,
             style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
           ),
@@ -66,7 +132,7 @@ class AssessmentResultScreen extends StatelessWidget {
                 Icon(categoryIcon, size: 64, color: color),
                 const SizedBox(height: 14),
                 Text(
-                  result.finalScore.toStringAsFixed(1),
+                  widget.result.finalScore.toStringAsFixed(1),
                   style: TextStyle(
                     fontSize: 52,
                     fontWeight: FontWeight.bold,
@@ -81,7 +147,7 @@ class AssessmentResultScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  result.category,
+                  widget.result.category,
                   style: TextStyle(
                     fontSize: 24,
                     fontWeight: FontWeight.bold,
@@ -97,15 +163,10 @@ class AssessmentResultScreen extends StatelessWidget {
           resultCard(
             icon: Icons.recommend,
             title: 'Recommendation',
-            content: result.recommendation,
+            content: widget.result.recommendation,
             color: color,
           ),
-          resultCard(
-            icon: Icons.psychology,
-            title: 'AI Explanation',
-            content: result.explanation,
-            color: const Color(0xFF168C4B),
-          ),
+          aiExplanationCard(),
           const SizedBox(height: 10),
           ElevatedButton.icon(
             onPressed: () {
@@ -195,6 +256,66 @@ class AssessmentResultScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   Text(content, style: const TextStyle(height: 1.4)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget aiExplanationCard() {
+    final textColor = const Color(0xFF168C4B);
+    return Card(
+      margin: const EdgeInsets.only(bottom: 16),
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.psychology, color: textColor, size: 30),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'AI Explanation',
+                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  if (isLoadingAiExplanation)
+                    const Row(
+                      children: [
+                        SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                        SizedBox(width: 10),
+                        Expanded(child: Text('Generating AI explanation...')),
+                      ],
+                    )
+                  else ...[
+                    Text(
+                      generatedAiExplanation ?? widget.result.explanation,
+                      style: const TextStyle(height: 1.4),
+                    ),
+                    if (aiExplanationUnavailable) ...[
+                      const SizedBox(height: 12),
+                      const Text(
+                        'AI explanation is currently unavailable. The deterministic assessment result above remains valid.',
+                      ),
+                      if (widget.assessmentId != null)
+                        TextButton.icon(
+                          key: const ValueKey('retry-ai-explanation-button'),
+                          onPressed: generateAiExplanation,
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('Retry AI Explanation'),
+                        ),
+                    ],
+                  ],
                 ],
               ),
             ),
