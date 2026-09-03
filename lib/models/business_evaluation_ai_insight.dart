@@ -1,8 +1,3 @@
-/// The bounded, structured advisory content returned by the Business Advisor.
-///
-/// Financial calculations, scores, and rule-based recommendations remain in
-/// [BusinessEvaluationService]. This model deliberately contains no financial
-/// inputs, user identifiers, or provider details.
 enum BusinessEvaluationAiInsightCacheStatus { generated, cached }
 
 enum BusinessEvaluationAiDriverType { strength, risk }
@@ -112,7 +107,6 @@ class BusinessEvaluationAiInsight {
     );
   }
 
-  /// Parses the RLS-protected stored row without contacting the Edge Function.
   factory BusinessEvaluationAiInsight.fromStoredRow(Object? value) {
     final row = _exactMap(value, const [
       'evaluation_id',

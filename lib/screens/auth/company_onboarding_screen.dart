@@ -73,8 +73,6 @@ class _CompanyOnboardingScreenState extends State<CompanyOnboardingScreen> {
         selectedCompanyCode,
       );
 
-      // Auth metadata improves onboarding UX only. It does not establish
-      // membership; the invitation-code claim RPC remains authoritative.
       final reconciledSelection =
           currentSelection ??
           findCompanyByCode(activeCompanies, initialCompanyCode);

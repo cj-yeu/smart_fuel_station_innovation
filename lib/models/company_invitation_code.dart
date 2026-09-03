@@ -39,8 +39,6 @@ class CompanyInvitationCode {
       'revoked_at',
       'status',
     ]);
-    // Historical invitation rows predate the 1–20 creation limit and remain
-    // displayable even if their old maximum use count is larger.
     final maximumUses = _nullableBoundedInteger(map['max_uses'], 1, 1 << 31);
     final usedCount = _boundedInteger(map['used_count'], 0, 1 << 31);
     if (maximumUses != null && usedCount > maximumUses) {

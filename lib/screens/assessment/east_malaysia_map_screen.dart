@@ -316,9 +316,6 @@ class _EastMalaysiaMapScreenState extends State<EastMalaysiaMapScreen> {
       selectedPoint = point;
       validationResult = null;
       validationError = null;
-      // A previous candidate's asynchronous lookups are no longer relevant.
-      // Their completion is guarded by the validation-result identity below,
-      // so reset these flags to allow the newly selected site to load.
       isLoadingNearbyFuelStations = false;
       isLoadingSiteFactorIntelligence = false;
       nearbyFuelStationResult = null;
@@ -335,8 +332,6 @@ class _EastMalaysiaMapScreenState extends State<EastMalaysiaMapScreen> {
       selectedRadiusKm = radiusKm;
       validationResult = null;
       validationError = null;
-      // Changing the radius creates a new candidate and must not inherit a
-      // pending lookup state from the previous candidate.
       isLoadingNearbyFuelStations = false;
       isLoadingSiteFactorIntelligence = false;
       nearbyFuelStationResult = null;
@@ -367,8 +362,6 @@ class _EastMalaysiaMapScreenState extends State<EastMalaysiaMapScreen> {
         validationResult = result;
         selectedPoint = result.candidate.point;
         selectedRadiusKm = result.candidate.analysisRadiusKm;
-        // Every authoritative validation is a fresh candidate snapshot. Do
-        // not let an earlier request suppress the new nearby/site-data load.
         isLoadingNearbyFuelStations = false;
         isLoadingSiteFactorIntelligence = false;
         nearbyFuelStationResult = null;
@@ -441,9 +434,6 @@ class _EastMalaysiaMapScreenState extends State<EastMalaysiaMapScreen> {
       siteFactorIntelligenceError = null;
     });
     try {
-      // Both functions use fixed, bounded Overpass queries. Give the nearby
-      // station lookup priority rather than issuing two public OSM requests
-      // at once, which can cause a temporary upstream queue or rate limit.
       if (nearbyFuelStationResult == null && !isLoadingNearbyFuelStations) {
         await loadNearbyFuelStations(result);
       }
@@ -1039,9 +1029,6 @@ class _EastMalaysiaMapScreenState extends State<EastMalaysiaMapScreen> {
     AssessmentSiteCandidate? currentCandidate,
     BoxConstraints constraints,
   ) {
-    // A short landscape viewport cannot safely hold a fixed map beside a fixed
-    // details panel. Keep both in one vertical page so swiping up moves the
-    // map out of the way and reveals the full candidate controls.
     final mapHeight = (constraints.maxHeight * 0.82).clamp(260.0, 420.0);
     return buildScrollableMapLayout(
       key: const ValueKey('landscape-map-layout'),
@@ -1155,8 +1142,6 @@ class _ProductionEastMalaysiaMap extends StatelessWidget {
       const LatLng(7.7, 119.8),
     );
 
-    // Camera bounds only keep navigation near the supported region. They are
-    // deliberately not the authoritative East Malaysia validation boundary.
     final regionalCameraBounds = LatLngBounds(
       const LatLng(-1.5, 107.0),
       const LatLng(9.0, 121.5),

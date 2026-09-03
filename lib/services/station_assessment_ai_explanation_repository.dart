@@ -13,8 +13,6 @@ class StationAssessmentAiExplanationUnavailableException implements Exception {
   String toString() => 'AI explanation is currently unavailable.';
 }
 
-/// Calls the single reviewed Module 2 Edge Function. The app sends only an
-/// assessment UUID; all factors and the OpenAI credential remain server-side.
 abstract class StationAssessmentAiExplanationRepository {
   static const functionName = 'station-assessment-ai-explanation';
 

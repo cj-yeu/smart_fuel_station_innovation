@@ -24,7 +24,6 @@ class EvaluationResultScreen extends StatefulWidget {
     this.aiInsightRepository,
   });
 
-  /// Opens a persisted evaluation without recalculating its stored figures.
   factory EvaluationResultScreen.fromEvaluation(
     BusinessEvaluation evaluation, {
     BusinessEvaluationAiInsightRepository? aiInsightRepository,
@@ -526,8 +525,6 @@ class _EvaluationResultScreenState extends State<EvaluationResultScreen> {
       physics: const NeverScrollableScrollPhysics(),
       crossAxisSpacing: 12,
       mainAxisSpacing: 12,
-      // Leave enough height for values such as “Not currently profitable” on
-      // narrow phones without allowing the final Break-even card to overflow.
       childAspectRatio: 1.18,
       children: [
         metricCard(
@@ -890,9 +887,6 @@ class _EvaluationResultScreenState extends State<EvaluationResultScreen> {
     final percentage = total == null || total <= 0
         ? ''
         : ' (${EvaluationNumberFormat.percentage(value / total * 100)})';
-    // A legend item can contain a long currency value and percentage. Giving
-    // its text a bounded flexible width lets Wrap place items responsively on
-    // narrow screens instead of allowing a Row to overflow by a few pixels.
     return SizedBox(
       width: 260,
       child: Row(

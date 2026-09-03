@@ -3,12 +3,6 @@ import 'package:sqflite/sqflite.dart';
 
 import '../models/assessment_draft.dart';
 
-/// Local-only storage for an authenticated user's unfinished new assessment.
-///
-/// Supabase remains the authoritative record for completed assessments. This
-/// repository intentionally stores no credentials, company data, provider
-/// payloads, or validated-site status. A restored draft must be revalidated
-/// before it can be submitted as a validated assessment.
 class AssessmentDraftRepository {
   static const _databaseName = 'smart_fuel_station_local.db';
   static const _tableName = 'assessment_drafts';

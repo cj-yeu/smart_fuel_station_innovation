@@ -133,9 +133,6 @@ class _AddEvaluationScreenState extends State<AddEvaluationScreen> {
     fuelPriceController.text = _selectedOfficialPrice.toStringAsFixed(2);
   }
 
-  /// Loads only the RLS-visible assessments. Company ownership is resolved by
-  /// PostgreSQL; this form intentionally supplies no client-side ownership
-  /// filter and selection is context only, not a persisted relationship.
   Future<void> loadAssessments() async {
     try {
       final loadedAssessments = await assessmentLoader();
@@ -595,8 +592,6 @@ class _AddEvaluationScreenState extends State<AddEvaluationScreen> {
         DropdownButtonFormField<String>(
           initialValue: selectedAssessment?.id ?? '',
           isExpanded: true,
-          // The selected form-field value has less vertical space than a menu
-          // entry. Keep it to one line; the menu itself can show two lines.
           itemHeight: null,
           decoration: const InputDecoration(
             labelText: 'Assessment Site',
@@ -773,7 +768,6 @@ class _AddEvaluationScreenState extends State<AddEvaluationScreen> {
         mode: LaunchMode.externalApplication,
       );
     } catch (_) {
-      // Attribution remains visible even when the host cannot open a browser.
     }
   }
 

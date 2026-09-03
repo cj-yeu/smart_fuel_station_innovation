@@ -1,4 +1,3 @@
-/// The supported official weekly retail products for this East Malaysia app.
 enum OfficialFuelProduct {
   ron95('RON95'),
   ron97('RON97'),
@@ -17,7 +16,6 @@ enum OfficialFuelProduct {
   }
 }
 
-/// One latest weekly retail-price record returned by data.gov.my.
 class OfficialFuelPrice {
   final DateTime effectiveDate;
   final double ron95;
@@ -33,8 +31,6 @@ class OfficialFuelPrice {
 
   double priceFor(OfficialFuelProduct product) => product.priceFrom(this);
 
-  /// Parses only the exact single latest `level` record requested by the
-  /// repository. Invalid provider data remains an internal parse failure.
   factory OfficialFuelPrice.fromApiResponse(Object? response) {
     if (response is! List || response.length != 1 || response.single is! Map) {
       throw const FormatException('Official fuel-price response is invalid.');

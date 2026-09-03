@@ -1,7 +1,3 @@
-/// The only GPT-generated output in a Module 2 assessment result.
-///
-/// Suitability score, category, and recommendation stay deterministic and are
-/// deliberately excluded from this model.
 class StationAssessmentAiExplanation {
   final String explanation;
 

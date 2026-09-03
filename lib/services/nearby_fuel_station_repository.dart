@@ -20,9 +20,6 @@ abstract class NearbyFuelStationRepository {
     sessionProvider,
   );
 
-  /// Loads public OSM fuel-station context for an already authoritative inside
-  /// result. The Edge Function independently revalidates the caller and site;
-  /// this client never supplies company membership or territory authority.
   Future<NearbyFuelStationResult> fetchForValidatedSite(
     EastMalaysiaSiteValidationResult validationResult,
   );

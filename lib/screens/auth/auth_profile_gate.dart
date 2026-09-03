@@ -40,8 +40,6 @@ class _AuthProfileGateState extends State<AuthProfileGate> {
   void initState() {
     super.initState();
 
-    // An injected ProfileService must use the default Supabase client because
-    // its internal client is intentionally not exposed for verification.
     client = widget.client ?? Supabase.instance.client;
     profileService = widget.profileService ?? ProfileService(client: client);
 
@@ -261,9 +259,6 @@ class _AuthProfileGateState extends State<AuthProfileGate> {
 
   @override
   Widget build(BuildContext context) {
-    // LoginScreen currently pushes Home after sign-in, and HomeScreen currently
-    // pushes Login after sign-out. Those navigation actions must be removed or
-    // adapted before AuthProfileGate is wired into main.dart.
     switch (gateState) {
       case _GateState.signedOut:
         return const LoginScreen();

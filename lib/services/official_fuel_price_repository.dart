@@ -14,10 +14,6 @@ class OfficialFuelPriceUnavailableException implements Exception {
   String toString() => 'Official fuel price is currently unavailable.';
 }
 
-/// Loads the latest official weekly fuel price without sending user data.
-///
-/// A repository instance keeps one successful response in memory for the
-/// lifetime of its owning screen, including product changes and retries.
 class OfficialFuelPriceRepository {
   static final Uri latestPriceUri = Uri.parse(
     'https://api.data.gov.my/data-catalogue?'

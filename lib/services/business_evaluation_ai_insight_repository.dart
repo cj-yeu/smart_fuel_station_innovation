@@ -15,10 +15,6 @@ class BusinessEvaluationAiInsightUnavailableException implements Exception {
   String toString() => 'AI insight is currently unavailable.';
 }
 
-/// Reads the caller's persisted insight through RLS or explicitly requests a
-/// new insight from the single reviewed Edge Function. The client sends only
-/// the evaluation identifier; ownership, model selection, financial inputs,
-/// and provider credentials remain server-side.
 abstract class BusinessEvaluationAiInsightRepository {
   static const functionName = 'business-evaluation-ai-insight';
 
@@ -34,12 +30,10 @@ abstract class BusinessEvaluationAiInsightRepository {
     sessionProvider,
   );
 
-  /// Loads a previously stored, RLS-visible insight without generating one.
   Future<BusinessEvaluationAiInsight?> loadPersistedInsight(
     String evaluationId,
   );
 
-  /// Generates or returns the server's valid cached insight for [evaluationId].
   Future<BusinessEvaluationAiInsight> generateInsight(String evaluationId);
 }
 

@@ -133,7 +133,6 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
     try {
       return Supabase.instance.client.auth.currentUser?.id;
     } catch (_) {
-      // Widget tests and signed-out startup states have no Supabase instance.
       return null;
     }
   }
@@ -158,9 +157,6 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
         commercialActivity = draft.commercialActivity;
         residentialActivity = draft.residentialActivity;
         landAccessibility = draft.landAccessibility;
-        // Preserve non-default ratings from a restored draft as manual input.
-        // A default 3 is the initial screen value, so an available site-data
-        // suggestion may still replace it after the user confirms a site.
         roadAccessibilityEdited = draft.roadAccessibility != 3;
         commercialActivityEdited = draft.commercialActivity != 3;
         residentialActivityEdited = draft.residentialActivity != 3;
@@ -168,7 +164,6 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
         isDraftRestored = true;
       });
     } catch (_) {
-      // A local draft must never block the normal Supabase-backed workflow.
     } finally {
       isRestoringDraft = false;
     }
@@ -211,7 +206,6 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
     try {
       await draftWriteChain;
     } catch (_) {
-      // A failed local write must not prevent a later write or Supabase save.
     }
   }
 
@@ -491,7 +485,6 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
     if (!mounted || selectedResult == null) return;
     final selection = switch (selectedResult) {
       EastMalaysiaMapSelection selection => selection,
-      // Kept only for injected legacy test builders during this UI transition.
       EastMalaysiaSiteValidationResult validationResult =>
         EastMalaysiaMapSelection(validationResult: validationResult),
       _ => null,
@@ -538,8 +531,6 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
       });
       scheduleDraftSave();
     } catch (_) {
-      // Site data is optional. The assessment remains fully manual when the
-      // bounded Edge Function or a provider is temporarily unavailable.
     }
   }
 
@@ -723,7 +714,6 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
     try {
       await launchUrl(url, mode: LaunchMode.externalApplication);
     } catch (_) {
-      // Attribution remains visible if the device has no browser handler.
     }
   }
 

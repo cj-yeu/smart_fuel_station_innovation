@@ -9,11 +9,6 @@ class EastMalaysiaGeographyRepository {
 
   const EastMalaysiaGeographyRepository(this._client);
 
-  /// Validates a candidate through the authoritative PostgreSQL geography RPC.
-  ///
-  /// The client sends no ownership value and performs no company lookup. The
-  /// RPC resolves company membership from `profiles.company_id` and fails
-  /// closed when authoritative boundary data cannot confirm the point.
   Future<EastMalaysiaSiteValidationResult> validateSite({
     required GeoPoint point,
     required double analysisRadiusKm,

@@ -1,10 +1,5 @@
 import 'package:intl/intl.dart';
 
-/// Consistent, presentation-only formatting for Module 3 figures.
-///
-/// Invalid values are rejected instead of being rendered as `NaN`, infinity,
-/// or a fabricated zero. Editable field values intentionally do not use this
-/// formatter so they remain directly parseable by the existing form logic.
 abstract final class EvaluationNumberFormat {
   static final NumberFormat _currency = NumberFormat('#,##0.00', 'en_US');
   static final NumberFormat _wholeNumber = NumberFormat('#,##0', 'en_US');
@@ -43,7 +38,6 @@ abstract final class EvaluationNumberFormat {
     return '${_oneDecimal.format(_requireFinite(value))} months';
   }
 
-  /// Compact labels are limited to chart axes; detailed values use [currency].
   static String compactCurrency(num value) {
     final finiteValue = _requireFinite(value);
     final absoluteValue = finiteValue.abs();

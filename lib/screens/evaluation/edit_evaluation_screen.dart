@@ -578,7 +578,6 @@ class _EditEvaluationScreenState extends State<EditEvaluationScreen> {
         mode: LaunchMode.externalApplication,
       );
     } catch (_) {
-      // Attribution remains visible even when the host cannot open a browser.
     }
   }
 

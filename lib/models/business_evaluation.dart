@@ -95,9 +95,6 @@ class BusinessEvaluation {
     );
   }
 
-  /// Reconstructs the read-only result view from the exact values that were
-  /// persisted after a deterministic calculation. It never recalculates or
-  /// changes stored figures.
   factory BusinessEvaluation.fromCalculatedValues({
     required String id,
     required String userId,

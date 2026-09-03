@@ -54,9 +54,6 @@ class StationAssessmentValidatedCreateInput {
   }) {
     final candidate = validationResult.candidate;
 
-    // Keep this order aligned with the validated-create RPC's material input
-    // order. Listing every field explicitly makes retry identity independent
-    // of Map insertion order and excludes server-derived validation state.
     return jsonEncode(<Object?>[
       content.locationName,
       content.populationDensity,

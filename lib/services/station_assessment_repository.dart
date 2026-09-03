@@ -1,5 +1,3 @@
-// ignore_for_file: prefer_initializing_formals
-
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/station_assessment.dart';
@@ -34,7 +32,6 @@ class StationAssessmentRepository {
 
   const StationAssessmentRepository(
     this._client, {
-    // Named public seams keep repository tests network-free without mocks.
     ValidatedAssessmentRpcCaller? validatedAssessmentRpcCaller,
     AssessmentRowsByIdLoader? assessmentRowsByIdLoader,
     AuthenticatedUserIdProvider? authenticatedUserIdProvider,
@@ -42,11 +39,6 @@ class StationAssessmentRepository {
        _assessmentRowsByIdLoader = assessmentRowsByIdLoader,
        _authenticatedUserIdProvider = authenticatedUserIdProvider;
 
-  /// Fetches the current company's RLS-visible assessments, newest first.
-  ///
-  /// There is intentionally no client-side company filter. PostgreSQL RLS
-  /// resolves `auth.uid()` through the authoritative `profiles.company_id`, so
-  /// the client neither supplies nor trusts a company ownership value.
   Future<List<StationAssessment>> fetchCompanyAssessments() async {
     if (_client.auth.currentSession == null) {
       throw StateError('An authenticated session is required.');
@@ -62,12 +54,6 @@ class StationAssessmentRepository {
         .toList(growable: false);
   }
 
-  /// Creates an assessment for the authenticated user and returns its row.
-  ///
-  /// The session-derived `user_id` is temporarily sent for compatibility with
-  /// the historical schema. The forward migration independently verifies it
-  /// against `auth.uid()` and derives authoritative `company_id` from
-  /// `profiles.company_id`; neither ownership value comes from the caller.
   Future<StationAssessment> createAssessment(
     StationAssessmentCreateInput input,
   ) async {
@@ -85,14 +71,6 @@ class StationAssessmentRepository {
     return StationAssessment.fromMap(data);
   }
 
-  /// Creates an assessment whose geography is revalidated and persisted by
-  /// PostgreSQL in the same transaction.
-  ///
-  /// Only the 14 content values, candidate coordinates/radius, expected
-  /// boundary dataset UUID, and a logical request UUID are sent. The request
-  /// UUID makes a retry idempotent; it is not an ownership or authorization
-  /// input. Ownership, territory, status, provenance, and validation time are
-  /// authoritative RPC outputs and never client input.
   Future<StationAssessment> createValidatedAssessment(
     StationAssessmentValidatedCreateInput input,
   ) async {
@@ -155,16 +133,6 @@ class StationAssessmentRepository {
     caseSensitive: false,
   );
 
-  /// Updates one RLS-authorized assessment by primary key and returns its row.
-  ///
-  /// [StationAssessmentCreateInput] is temporarily reused because it exactly
-  /// represents the 14 writable fields in the legacy manual form. It contains
-  /// no identity or ownership fields, so only its content map is sent.
-  ///
-  /// PostgreSQL RLS decides creator, future same-company admin, and
-  /// cross-company authorization without client ownership filters. PostgREST
-  /// may return zero rows for a missing or unauthorized record without proving
-  /// which case occurred, so verifying the affected-row count is mandatory.
   Future<StationAssessment> updateAssessment(
     String assessmentId,
     StationAssessmentCreateInput input,
@@ -198,12 +166,6 @@ class StationAssessmentRepository {
     return StationAssessment.fromMap(updatedRows.single);
   }
 
-  /// Deletes one RLS-authorized assessment by primary key.
-  ///
-  /// PostgreSQL RLS, rather than client-supplied ownership filters, decides
-  /// whether the row may be deleted. The returned ID is checked because an
-  /// RLS-rejected delete can succeed at the protocol level while affecting no
-  /// rows, which must not be reported as a successful deletion.
   Future<void> deleteAssessment(String assessmentId) async {
     final normalizedId = assessmentId.trim();
     if (normalizedId.isEmpty) {
