@@ -128,6 +128,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             TextField(
               controller: phoneController,
               keyboardType: TextInputType.phone,
+              inputFormatters: [LengthLimitingTextInputFormatter(20)],
               style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
               decoration: const InputDecoration(
                 labelText: 'Phone Number',
