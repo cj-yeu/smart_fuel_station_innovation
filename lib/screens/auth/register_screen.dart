@@ -133,7 +133,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     });
 
     try {
-      await Supabase.instance.client.auth.signUp(
+      final response = await Supabase.instance.client.auth.signUp(
         email: email,
         password: password,
         emailRedirectTo: 'io.smartfuelstation.app://login-callback/',
@@ -144,6 +144,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
       );
 
       if (!mounted) return;
+
+      final identities = response.user?.identities;
+      if (identities != null && identities.isEmpty) {
+        showMessage(
+          'This email is already registered. Please log in instead.',
+          isError: true,
+        );
+        return;
+      }
 
       showMessage(
         'Registration successful. Verify your email, then sign in to confirm your company with an invitation code.',
