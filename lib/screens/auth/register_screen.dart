@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../models/fuel_company.dart';
@@ -219,6 +220,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     TextField(
                       controller: nameController,
                       textInputAction: TextInputAction.next,
+                      inputFormatters: [LengthLimitingTextInputFormatter(100)],
                       decoration: const InputDecoration(
                         labelText: 'Full Name',
                         prefixIcon: Icon(Icons.person),
@@ -271,6 +273,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     TextField(
                       controller: passwordController,
                       obscureText: true,
+                      inputFormatters: [LengthLimitingTextInputFormatter(20)],
                       onSubmitted: (_) {
                         if (canRegister) register();
                       },

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../services/profile_service.dart';
 
@@ -116,6 +117,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             TextField(
               controller: fullNameController,
               textInputAction: TextInputAction.next,
+              inputFormatters: [LengthLimitingTextInputFormatter(100)],
               style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
               decoration: const InputDecoration(
                 labelText: 'Full Name',

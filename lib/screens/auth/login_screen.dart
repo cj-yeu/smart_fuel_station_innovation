@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'register_screen.dart';
@@ -127,6 +128,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   TextField(
                     controller: passwordController,
                     obscureText: obscurePassword,
+                    inputFormatters: [LengthLimitingTextInputFormatter(20)],
                     onSubmitted: (_) {
                       if (!isLoading) login();
                     },
