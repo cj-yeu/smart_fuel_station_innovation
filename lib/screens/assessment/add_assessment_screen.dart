@@ -205,8 +205,7 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
   Future<void> continueAfterDraftWrite() async {
     try {
       await draftWriteChain;
-    } catch (_) {
-    }
+    } catch (_) {}
   }
 
   Future<void> clearDraft() async {
@@ -530,8 +529,7 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
         _autofillAvailableSiteFactors(intelligence);
       });
       scheduleDraftSave();
-    } catch (_) {
-    }
+    } catch (_) {}
   }
 
   void _applyNearbyFuelStationAutofill(NearbyFuelStationResult? result) {
@@ -713,8 +711,7 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
 
     try {
       await launchUrl(url, mode: LaunchMode.externalApplication);
-    } catch (_) {
-    }
+    } catch (_) {}
   }
 
   void _showInformationDialog({
@@ -1023,6 +1020,7 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
             label: 'Location Name',
             hint: 'Example: Setapak, Kuala Lumpur',
             icon: Icons.location_on_outlined,
+            maxLength: 100,
           ),
           inputField(
             controller: populationController,
@@ -1212,10 +1210,35 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
     required IconData icon,
     bool isNumber = false,
     bool isDecimal = false,
+    int? maxLength,
     String? informationMessage,
   }) {
     final errorText = fieldErrors[label];
     final maximum = _numericMaximums[label];
+    final inputFormatters = <TextInputFormatter>[
+      if (maxLength != null) LengthLimitingTextInputFormatter(maxLength),
+      if (maximum != null)
+        TextInputFormatter.withFunction((oldValue, newValue) {
+          final entered = double.tryParse(newValue.text);
+          return entered == null || entered <= maximum ? newValue : oldValue;
+        }),
+      if (isDecimal)
+        TextInputFormatter.withFunction((oldValue, newValue) {
+          return newValue.text.isEmpty ||
+                  RegExp(
+                    r'^(?:0|[1-9]\d*)(?:\.\d{0,2})?$',
+                  ).hasMatch(newValue.text)
+              ? newValue
+              : oldValue;
+        }),
+      if (isNumber)
+        TextInputFormatter.withFunction((oldValue, newValue) {
+          return newValue.text.isEmpty ||
+                  RegExp(r'^(?:0|[1-9]\d*)$').hasMatch(newValue.text)
+              ? newValue
+              : oldValue;
+        }),
+    ];
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: TextField(
@@ -1226,16 +1249,7 @@ class _AddAssessmentScreenState extends State<AddAssessmentScreen> {
             fieldErrors = Map.of(fieldErrors)..remove(label);
           });
         },
-        inputFormatters: maximum == null
-            ? null
-            : [
-                TextInputFormatter.withFunction((oldValue, newValue) {
-                  final entered = double.tryParse(newValue.text);
-                  return entered == null || entered <= maximum
-                      ? newValue
-                      : oldValue;
-                }),
-              ],
+        inputFormatters: inputFormatters.isEmpty ? null : inputFormatters,
         keyboardType: isDecimal
             ? const TextInputType.numberWithOptions(decimal: true)
             : isNumber

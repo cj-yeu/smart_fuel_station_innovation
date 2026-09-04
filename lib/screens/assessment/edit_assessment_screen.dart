@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../models/station_assessment.dart';
@@ -31,6 +32,13 @@ class EditAssessmentScreen extends StatefulWidget {
 }
 
 class _EditAssessmentScreenState extends State<EditAssessmentScreen> {
+  static const _numericMaximums = <String, num>{
+    'Population Density': 100000,
+    'Registered Vehicle Count': 10000000,
+    'Nearby Fuel Stations': 100,
+    'Nearest Competitor Distance': 10,
+  };
+
   late final TextEditingController locationController;
   late final TextEditingController populationController;
   late final TextEditingController vehicleCountController;
@@ -148,6 +156,16 @@ class _EditAssessmentScreenState extends State<EditAssessmentScreen> {
         nearbyFuelStations < 0 ||
         competitorDistanceKm < 0) {
       showMessage('Numeric values cannot be negative', isError: true);
+      return;
+    }
+
+    if (populationDensity > _numericMaximums['Population Density']! ||
+        registeredVehicleCount >
+            _numericMaximums['Registered Vehicle Count']! ||
+        nearbyFuelStations > _numericMaximums['Nearby Fuel Stations']! ||
+        competitorDistanceKm >
+            _numericMaximums['Nearest Competitor Distance']!) {
+      showMessage('Enter values within the allowed limits', isError: true);
       return;
     }
 
@@ -298,6 +316,7 @@ class _EditAssessmentScreenState extends State<EditAssessmentScreen> {
             label: 'Location Name',
             hint: 'Example: Setapak, Kuala Lumpur',
             icon: Icons.location_on_outlined,
+            maxLength: 100,
           ),
           inputField(
             controller: populationController,
@@ -444,11 +463,38 @@ class _EditAssessmentScreenState extends State<EditAssessmentScreen> {
     required IconData icon,
     bool isNumber = false,
     bool isDecimal = false,
+    int? maxLength,
   }) {
+    final maximum = _numericMaximums[label];
+    final inputFormatters = <TextInputFormatter>[
+      if (maxLength != null) LengthLimitingTextInputFormatter(maxLength),
+      if (maximum != null)
+        TextInputFormatter.withFunction((oldValue, newValue) {
+          final entered = double.tryParse(newValue.text);
+          return entered == null || entered <= maximum ? newValue : oldValue;
+        }),
+      if (isDecimal)
+        TextInputFormatter.withFunction((oldValue, newValue) {
+          return newValue.text.isEmpty ||
+                  RegExp(
+                    r'^(?:0|[1-9]\d*)(?:\.\d{0,2})?$',
+                  ).hasMatch(newValue.text)
+              ? newValue
+              : oldValue;
+        }),
+      if (isNumber)
+        TextInputFormatter.withFunction((oldValue, newValue) {
+          return newValue.text.isEmpty ||
+                  RegExp(r'^(?:0|[1-9]\d*)$').hasMatch(newValue.text)
+              ? newValue
+              : oldValue;
+        }),
+    ];
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: TextField(
         controller: controller,
+        inputFormatters: inputFormatters.isEmpty ? null : inputFormatters,
         keyboardType: isDecimal
             ? const TextInputType.numberWithOptions(decimal: true)
             : isNumber
