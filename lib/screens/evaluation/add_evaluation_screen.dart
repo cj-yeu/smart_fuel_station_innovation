@@ -43,6 +43,19 @@ class _AddEvaluationScreenState extends State<AddEvaluationScreen> {
     'Initial Investment (RM)': 1000000000,
   };
 
+  static const _numericMaximumLengths = <String, int>{
+    'Selling Price per Litre (RM)': 6,
+    'Purchase Cost per Litre (RM)': 6,
+    'Estimated Daily Customers': 6,
+    'Average Litres per Customer': 7,
+    'Rental or Land Cost (RM)': 12,
+    'Staff Salary (RM)': 12,
+    'Utilities (RM)': 12,
+    'Maintenance (RM)': 12,
+    'Other Operating Cost (RM)': 12,
+    'Initial Investment (RM)': 13,
+  };
+
   static const _numericRangeHints = <String, String>{
     'Selling Price per Litre (RM)': 'Allowed: RM0–RM100 per litre',
     'Purchase Cost per Litre (RM)': 'Allowed: RM0–RM100 per litre',
@@ -454,6 +467,7 @@ class _AddEvaluationScreenState extends State<AddEvaluationScreen> {
             label: 'Station Name',
             hint: 'Example: Setapak Smart Fuel Station',
             icon: Icons.local_gas_station,
+            maxLength: 100,
           ),
           officialFuelPriceCard(),
           inputField(
@@ -767,8 +781,7 @@ class _AddEvaluationScreenState extends State<AddEvaluationScreen> {
         Uri.parse('https://data.gov.my/data-catalogue/fuelprice'),
         mode: LaunchMode.externalApplication,
       );
-    } catch (_) {
-    }
+    } catch (_) {}
   }
 
   String _formatEffectiveDate(DateTime date) {
@@ -866,9 +879,36 @@ class _AddEvaluationScreenState extends State<AddEvaluationScreen> {
     required IconData icon,
     bool number = false,
     bool decimal = false,
+    int? maxLength,
   }) {
     final errorText = fieldErrors[label];
     final maximum = _numericMaximums[label];
+    final inputMaxLength = maxLength ?? _numericMaximumLengths[label];
+    final inputFormatters = <TextInputFormatter>[
+      if (inputMaxLength != null)
+        LengthLimitingTextInputFormatter(inputMaxLength),
+      if (maximum != null)
+        TextInputFormatter.withFunction((oldValue, newValue) {
+          final entered = double.tryParse(newValue.text);
+          return entered == null || entered <= maximum ? newValue : oldValue;
+        }),
+      if (decimal)
+        TextInputFormatter.withFunction((oldValue, newValue) {
+          return newValue.text.isEmpty ||
+                  RegExp(
+                    r'^(?:0|[1-9]\d*)(?:\.\d{0,2})?$',
+                  ).hasMatch(newValue.text)
+              ? newValue
+              : oldValue;
+        }),
+      if (number)
+        TextInputFormatter.withFunction((oldValue, newValue) {
+          return newValue.text.isEmpty ||
+                  RegExp(r'^(?:0|[1-9]\d*)$').hasMatch(newValue.text)
+              ? newValue
+              : oldValue;
+        }),
+    ];
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: TextField(
@@ -879,16 +919,7 @@ class _AddEvaluationScreenState extends State<AddEvaluationScreen> {
             fieldErrors = Map.of(fieldErrors)..remove(label);
           });
         },
-        inputFormatters: maximum == null
-            ? null
-            : [
-                TextInputFormatter.withFunction((oldValue, newValue) {
-                  final entered = double.tryParse(newValue.text);
-                  return entered == null || entered <= maximum
-                      ? newValue
-                      : oldValue;
-                }),
-              ],
+        inputFormatters: inputFormatters.isEmpty ? null : inputFormatters,
         keyboardType: decimal
             ? const TextInputType.numberWithOptions(decimal: true)
             : number

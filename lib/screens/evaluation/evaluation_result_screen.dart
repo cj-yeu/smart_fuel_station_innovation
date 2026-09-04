@@ -618,6 +618,7 @@ class _EvaluationResultScreenState extends State<EvaluationResultScreen> {
 
     final chartMaximum = maximum <= 0 ? 100.0 : maximum * 1.2;
     final minimum = math.min(0.0, result.monthlyProfit);
+    final referenceLineColor = Theme.of(context).dividerColor;
 
     return Card(
       child: Padding(
@@ -671,7 +672,28 @@ class _EvaluationResultScreenState extends State<EvaluationResultScreen> {
                       strokeWidth: value == 0 ? 1.2 : 0.7,
                     ),
                   ),
-                  borderData: FlBorderData(show: false),
+                  extraLinesData: ExtraLinesData(
+                    extraLinesOnTop: false,
+                    horizontalLines: [
+                      HorizontalLine(
+                        y: 0,
+                        color: referenceLineColor,
+                        strokeWidth: 1.4,
+                      ),
+                      HorizontalLine(
+                        y: chartMaximum,
+                        color: referenceLineColor,
+                        strokeWidth: 1.2,
+                      ),
+                    ],
+                  ),
+                  borderData: FlBorderData(
+                    show: true,
+                    border: Border(
+                      top: BorderSide(color: referenceLineColor, width: 1.2),
+                      bottom: BorderSide(color: referenceLineColor, width: 1.4),
+                    ),
+                  ),
                   barTouchData: BarTouchData(
                     touchTooltipData: BarTouchTooltipData(
                       getTooltipItem: (group, groupIndex, rod, rodIndex) {
@@ -807,6 +829,14 @@ class _EvaluationResultScreenState extends State<EvaluationResultScreen> {
                 ),
               ],
             ),
+            const SizedBox(height: 4),
+            Text(
+              'Small portions are shown in the legend for readability.',
+              style: TextStyle(
+                fontSize: 12,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
             const SizedBox(height: 18),
             SizedBox(
               height: 210,
@@ -817,7 +847,7 @@ class _EvaluationResultScreenState extends State<EvaluationResultScreen> {
                   sections: [
                     PieChartSectionData(
                       value: fuelCost,
-                      title: percentageText(
+                      title: pieSlicePercentageText(
                         fuelCost,
                         result.monthlyOperatingCost,
                       ),
@@ -830,7 +860,7 @@ class _EvaluationResultScreenState extends State<EvaluationResultScreen> {
                     ),
                     PieChartSectionData(
                       value: fixedCost,
-                      title: percentageText(
+                      title: pieSlicePercentageText(
                         fixedCost,
                         result.monthlyOperatingCost,
                       ),
@@ -911,6 +941,11 @@ class _EvaluationResultScreenState extends State<EvaluationResultScreen> {
   String percentageText(double value, double total) => total <= 0
       ? EvaluationNumberFormat.percentage(0)
       : EvaluationNumberFormat.percentage(value / total * 100);
+
+  String pieSlicePercentageText(double value, double total) {
+    if (total <= 0 || value / total < 0.15) return '';
+    return percentageText(value, total);
+  }
 
   String formatAxisCurrency(double value) =>
       EvaluationNumberFormat.compactCurrency(value);

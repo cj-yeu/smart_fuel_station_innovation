@@ -1,5 +1,6 @@
 import '../../models/business_evaluation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -26,6 +27,32 @@ class EditEvaluationScreen extends StatefulWidget {
 }
 
 class _EditEvaluationScreenState extends State<EditEvaluationScreen> {
+  static const _numericMaximums = <String, num>{
+    'Selling Price per Litre (RM)': 100,
+    'Purchase Cost per Litre (RM)': 100,
+    'Estimated Daily Customers': 100000,
+    'Average Litres per Customer': 1000,
+    'Rental or Land Cost (RM)': 100000000,
+    'Staff Salary (RM)': 100000000,
+    'Utilities (RM)': 100000000,
+    'Maintenance (RM)': 100000000,
+    'Other Operating Cost (RM)': 100000000,
+    'Initial Investment (RM)': 1000000000,
+  };
+
+  static const _numericMaximumLengths = <String, int>{
+    'Selling Price per Litre (RM)': 6,
+    'Purchase Cost per Litre (RM)': 6,
+    'Estimated Daily Customers': 6,
+    'Average Litres per Customer': 7,
+    'Rental or Land Cost (RM)': 12,
+    'Staff Salary (RM)': 12,
+    'Utilities (RM)': 12,
+    'Maintenance (RM)': 12,
+    'Other Operating Cost (RM)': 12,
+    'Initial Investment (RM)': 13,
+  };
+
   late final TextEditingController stationNameController;
   late final TextEditingController fuelPriceController;
   late final TextEditingController fuelCostController;
@@ -196,6 +223,20 @@ class _EditEvaluationScreenState extends State<EditEvaluationScreen> {
       return;
     }
 
+    if (fuelPrice > _numericMaximums['Selling Price per Litre (RM)']! ||
+        fuelCost > _numericMaximums['Purchase Cost per Litre (RM)']! ||
+        dailyCustomers > _numericMaximums['Estimated Daily Customers']! ||
+        averageLitres > _numericMaximums['Average Litres per Customer']! ||
+        rental > _numericMaximums['Rental or Land Cost (RM)']! ||
+        salary > _numericMaximums['Staff Salary (RM)']! ||
+        utilities > _numericMaximums['Utilities (RM)']! ||
+        maintenance > _numericMaximums['Maintenance (RM)']! ||
+        otherCost > _numericMaximums['Other Operating Cost (RM)']! ||
+        investment > _numericMaximums['Initial Investment (RM)']!) {
+      showMessage('Enter values within the allowed limits', isError: true);
+      return;
+    }
+
     if (fuelPrice <= fuelCost) {
       showMessage(
         'Selling price must be greater than purchase cost',
@@ -361,6 +402,7 @@ class _EditEvaluationScreenState extends State<EditEvaluationScreen> {
             label: 'Station Name',
             hint: 'Example: Setapak Smart Fuel Station',
             icon: Icons.local_gas_station,
+            maxLength: 100,
           ),
           officialFuelPriceCard(),
           inputField(
@@ -577,8 +619,7 @@ class _EditEvaluationScreenState extends State<EditEvaluationScreen> {
         Uri.parse('https://data.gov.my/data-catalogue/fuelprice'),
         mode: LaunchMode.externalApplication,
       );
-    } catch (_) {
-    }
+    } catch (_) {}
   }
 
   String _formatEffectiveDate(DateTime date) {
@@ -607,11 +648,40 @@ class _EditEvaluationScreenState extends State<EditEvaluationScreen> {
     required IconData icon,
     bool number = false,
     bool decimal = false,
+    int? maxLength,
   }) {
+    final maximum = _numericMaximums[label];
+    final inputMaxLength = maxLength ?? _numericMaximumLengths[label];
+    final inputFormatters = <TextInputFormatter>[
+      if (inputMaxLength != null)
+        LengthLimitingTextInputFormatter(inputMaxLength),
+      if (maximum != null)
+        TextInputFormatter.withFunction((oldValue, newValue) {
+          final entered = double.tryParse(newValue.text);
+          return entered == null || entered <= maximum ? newValue : oldValue;
+        }),
+      if (decimal)
+        TextInputFormatter.withFunction((oldValue, newValue) {
+          return newValue.text.isEmpty ||
+                  RegExp(
+                    r'^(?:0|[1-9]\d*)(?:\.\d{0,2})?$',
+                  ).hasMatch(newValue.text)
+              ? newValue
+              : oldValue;
+        }),
+      if (number)
+        TextInputFormatter.withFunction((oldValue, newValue) {
+          return newValue.text.isEmpty ||
+                  RegExp(r'^(?:0|[1-9]\d*)$').hasMatch(newValue.text)
+              ? newValue
+              : oldValue;
+        }),
+    ];
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: TextField(
         controller: controller,
+        inputFormatters: inputFormatters.isEmpty ? null : inputFormatters,
         keyboardType: decimal
             ? const TextInputType.numberWithOptions(decimal: true)
             : number
